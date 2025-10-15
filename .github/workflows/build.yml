@@ -1,10 +1,9 @@
-name: Build Executables
+name: Build Application
 
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build-windows:
@@ -25,7 +24,7 @@ jobs:
 
       - name: Build Windows executable
         run: |
-          pyinstaller --onefile src/main.py --name PhotoUploader
+          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
@@ -33,8 +32,8 @@ jobs:
           name: PhotoUploader-Windows
           path: dist/PhotoUploader.exe
 
-  build-macos:
-    runs-on: macos-latest
+  build-linux:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,20 +48,46 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build macOS app
+      - name: Build Linux executable
         run: |
-          # Use --windowed to create a .app bundle instead of a single executable
-          pyinstaller --windowed --name PhotoUploader src/main.py
+          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
 
-      - name: Package the macOS app into a zip file
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-Linux
+          path: dist/PhotoUploader
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
         run: |
-          # The output is dist/PhotoUploader.app which is a directory
-          # We zip it for easy distribution
-          zip -r dist/PhotoUploader-macOS.zip dist/PhotoUploader.app
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS app for ${{ matrix.arch }}
+        run: |
+          pyinstaller --windowed --name PhotoUploader-${{ matrix.arch }} src/main.py
+
+      - name: Package the macOS app
+        run: |
+          cd dist
+          zip -r PhotoUploader-macOS-${{ matrix.arch }}.zip PhotoUploader-${{ matrix.arch }}.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-macOS
-          # Upload the newly created zip file
-          path: dist/PhotoUploader-macOS.zip
+          name: PhotoUploader-macOS-${{ matrix.arch }}
+          path: dist/PhotoUploader-macOS-${{ matrix.arch }}.zip
