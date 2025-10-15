@@ -51,10 +51,18 @@ jobs:
 
       - name: Build macOS app
         run: |
-          pyinstaller --onefile src/main.py --name PhotoUploader
+          # Use --windowed to create a .app bundle instead of a single executable
+          pyinstaller --windowed --name PhotoUploader src/main.py
+
+      - name: Package the macOS app into a zip file
+        run: |
+          # The output is dist/PhotoUploader.app which is a directory
+          # We zip it for easy distribution
+          zip -r dist/PhotoUploader-macOS.zip dist/PhotoUploader.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: PhotoUploader-macOS
-          path: dist/PhotoUploader
+          # Upload the newly created zip file
+          path: dist/PhotoUploader-macOS.zip
