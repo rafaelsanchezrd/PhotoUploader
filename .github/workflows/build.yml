@@ -1,65 +1,5 @@
-name: Build Application
-
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Windows executable
-        run: |
-          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-Windows
-          path: dist/PhotoUploader.exe
-
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build Linux executable
-        run: |
-          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
-
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-Linux
-          path: dist/PhotoUploader
-
   build-macos:
-    runs-on: macos-13  # Intel-compatible runner
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -74,7 +14,18 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build macOS Intel app
+      - name: Build macOS app
         run: |
           pyinstaller --windowed --name PhotoUploader src/main.py
-          file dist/PhotoUploader.
+          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+
+      - name: Zip app for upload
+        run: |
+          cd dist
+          zip -r PhotoUploader-macOS.zip PhotoUploader.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-macOS
+          path: dist/PhotoUploader-macOS.zip
