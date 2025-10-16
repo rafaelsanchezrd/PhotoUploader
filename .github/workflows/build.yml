@@ -58,8 +58,8 @@ jobs:
           name: PhotoUploader-Linux
           path: dist/PhotoUploader
 
-  build-macos:
-    runs-on: macos-13  # Intel-compatible macOS runner
+    build-macos:
+    runs-on: macos-13  # Intel-based macOS runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
