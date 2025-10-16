@@ -1,5 +1,13 @@
-  build-macos:
-    runs-on: macos-latest
+name: Build Application
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -14,18 +22,80 @@
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build macOS app
+      - name: Build Windows executable
         run: |
-          pyinstaller --windowed --name PhotoUploader src/main.py
-          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-Windows
+          path: dist/PhotoUploader.exe
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Linux executable
+        run: |
+          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-Linux
+          path: dist/PhotoUploader
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS app for ${{ matrix.arch }}
+        run: |
+          # Build app using the correct architecture
+          if [ "${{ matrix.arch }}" = "x86_64" ]; then
+            export ARCHFLAGS="-arch x86_64"
+          else
+            export ARCHFLAGS="-arch arm64"
+          fi
+
+          pyinstaller --windowed --name PhotoUploader-${{ matrix.arch }} src/main.py
+          file dist/PhotoUploader-${{ matrix.arch }}.app/Contents/MacOS/PhotoUploader-${{ matrix.arch }} || true
 
       - name: Zip app for upload
         run: |
           cd dist
-          zip -r PhotoUploader-macOS.zip PhotoUploader.app
+          zip -r PhotoUploader-macOS-${{ matrix.arch }}.zip PhotoUploader-${{ matrix.arch }}.app
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-macOS
-          path: dist/PhotoUploader-macOS.zip
+          name: PhotoUploader-macOS-${{ matrix.arch }}
+          path: dist/PhotoUploader-macOS-${{ matrix.arch }}.zip
