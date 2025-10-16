@@ -91,3 +91,36 @@ jobs:
         with:
           name: PhotoUploader-macOS-${{ matrix.arch }}
           path: dist/PhotoUploader-macOS-${{ matrix.arch }}.zip
+  build-macos:
+    runs-on: macos-13  # macOS Ventura (Intel compatible runner)
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS Intel app
+        run: |
+          # Force Intel architecture
+          pyinstaller --windowed --name PhotoUploader src/main.py
+          # Verify architecture
+          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+
+      - name: Zip the app
+        run: |
+          cd dist
+          zip -r PhotoUploader-macOS-Intel.zip PhotoUploader.app
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-macOS-Intel
+          path: dist/PhotoUploader-macOS-Intel.zip
