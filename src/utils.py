@@ -3,6 +3,7 @@ Utility functions.
 """
 
 import os
+import sys
 import logging
 from typing import List, Tuple
 from pathlib import Path
@@ -10,8 +11,22 @@ from config import ALLOWED_EXTENSIONS
 
 logger = logging.getLogger(__name__)
 
-def setup_logging(log_file: str = 'uploader.log'):
+def setup_logging(log_file: str = None):
     """Configure logging for the application."""
+    
+    # If no log file specified, determine proper location based on platform
+    if log_file is None:
+        if sys.platform == 'win32':  # Windows
+            log_dir = Path(os.environ.get('APPDATA', Path.home())) / 'PhotoUploader'
+        elif sys.platform == 'darwin':  # macOS
+            log_dir = Path.home() / 'Library' / 'Logs' / 'PhotoUploader'
+        else:  # Linux and others
+            log_dir = Path.home() / '.photouploader'
+        
+        # Create log directory if it doesn't exist
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = str(log_dir / 'uploader.log')
+    
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -20,6 +35,8 @@ def setup_logging(log_file: str = 'uploader.log'):
             logging.StreamHandler()
         ]
     )
+    
+    logger.info(f"Logging initialized. Log file: {log_file}")
 
 def format_bytes(bytes_value: int) -> str:
     """Convert bytes to human-readable format."""
