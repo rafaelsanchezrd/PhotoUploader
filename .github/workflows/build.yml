@@ -121,8 +121,6 @@ jobs:
     steps:
       - name: Download all macOS artifacts
         uses: actions/download-artifact@v4
-        # By not specifying a path, it downloads all artifacts into directories
-        # named after the artifact in the workspace root.
 
       - name: Unzip, merge, and verify universal app
         run: |
@@ -141,6 +139,7 @@ jobs:
           lipo -info "x86_64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader"
 
           echo "--- Creating universal app structure ---"
+          mkdir -p dist
           cp -R "arm64-build/PhotoUploader.app" "dist/PhotoUploader.app"
 
           echo "--- Creating universal binary with lipo ---"
@@ -156,7 +155,8 @@ jobs:
           echo "Universal binary successfully verified."
           
           echo "--- Zipping the universal app ---"
-          zip -ry "dist/PhotoUploader-macOS-Universal.zip" "dist/PhotoUploader.app"
+          cd dist
+          zip -ry PhotoUploader-macOS-Universal.zip PhotoUploader.app
           echo "Zipping complete."
 
       - name: Upload Universal macOS app
