@@ -18,11 +18,11 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
       - name: Build Windows executable
-        run: |
-          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
+        run: pyinstaller --onefile --windowed --noconfirm --name PhotoUploader src/main.py
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
@@ -41,77 +41,120 @@ jobs:
           python-version: '3.12'
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
       - name: Build Linux executable
-        run: |
-          pyinstaller --onefile --windowed --name PhotoUploader src/main.py
+        run: pyinstaller --onefile --windowed --noconfirm --name PhotoUploader src/main.py
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: PhotoUploader-Linux
           path: dist/PhotoUploader
 
-  # ---------------- macOS BUILD (both architectures) ----------------
-  build-macos:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        arch: [arm64, x86_64]
+  # ---------------- macOS BUILD (Intel x86_64) ----------------
+  build-macos-x86_64:
+    runs-on: macos-13 # Use an Intel-based runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Set up Python
+      - name: Set up Python for x86_64
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          architecture: 'x64'
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-      - name: Build macOS app for ${{ matrix.arch }}
+      - name: Build macOS app for x86_64
         run: |
-          pyinstaller --windowed --name PhotoUploader src/main.py
+          pyinstaller --windowed --noconfirm --name PhotoUploader src/main.py
           echo "Verifying architecture..."
-          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader || true
-        env:
-          ARCHFLAGS: "-arch ${{ matrix.arch }}"
-      - name: Upload macOS build
+          # This check will fail the job if the binary is not for x86_64
+          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader | grep "x86_64"
+      - name: Upload macOS x86_64 artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-${{ matrix.arch }}
+          name: PhotoUploader-x86_64
           path: dist/PhotoUploader.app
 
-  # ---------------- MERGE INTO UNIVERSAL APP ----------------
+  # ---------------- macOS BUILD (Apple Silicon arm64) ----------------
+  build-macos-arm64:
+    runs-on: macos-14 # Use an ARM-based (Apple Silicon) runner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python for arm64
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: 'arm64'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Build macOS app for arm64
+        run: |
+          pyinstaller --windowed --noconfirm --name PhotoUploader src/main.py
+          echo "Verifying architecture..."
+          # This check will fail the job if the binary is not for arm64
+          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader | grep "arm64"
+      - name: Upload macOS arm64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-arm64
+          path: dist/PhotoUploader.app
+
+  # ---------------- MERGE MACOS BUILDS INTO UNIVERSAL APP ----------------
   merge-macos-universal:
-    needs: build-macos
-    runs-on: macos-latest
+    # This job runs after both macOS builds are successful
+    needs: [build-macos-x86_64, build-macos-arm64]
+    runs-on: macos-latest # The merge can happen on any macOS runner
     steps:
       - name: Download ARM build
         uses: actions/download-artifact@v4
         with:
           name: PhotoUploader-arm64
-          path: arm
+          path: arm64-build
 
       - name: Download Intel build
         uses: actions/download-artifact@v4
         with:
           name: PhotoUploader-x86_64
-          path: intel
+          path: x86_64-build
+      
+      - name: Log downloaded files for debugging
+        run: |
+          echo "--- ARM Build Contents ---"
+          ls -R arm64-build
+          echo "--- Intel Build Contents ---"
+          ls -R x86_64-build
 
       - name: Merge Intel + ARM into universal app
         run: |
-          echo "Creating universal binary..."
-          mkdir -p dist/PhotoUploader-Universal.app/Contents
-          cp -R arm/PhotoUploader.app/Contents/* dist/PhotoUploader-Universal.app/Contents/
+          echo "Creating universal app structure..."
+          # Copy the entire ARM .app bundle to use as a base
+          cp -R arm64-build/PhotoUploader.app dist/PhotoUploader.app
+
+          echo "Creating universal binary with lipo..."
+          # Create the universal binary and place it inside the new .app bundle
           lipo -create \
-            arm/PhotoUploader.app/Contents/MacOS/PhotoUploader \
-            intel/PhotoUploader.app/Contents/MacOS/PhotoUploader \
-            -output dist/PhotoUploader-Universal.app/Contents/MacOS/PhotoUploader
-          echo "Universal binary created successfully."
-          file dist/PhotoUploader-Universal.app/Contents/MacOS/PhotoUploader
+            "arm64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader" \
+            "x86_64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader" \
+            -output "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
+
+          echo "Verifying the final universal binary..."
+          # This check confirms the final binary has both architectures
+          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
+          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "x86_64"
+          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "arm64"
+          
+          echo "Zipping the universal app..."
           cd dist
-          zip -r PhotoUploader-macOS-Universal.zip PhotoUploader-Universal.app
+          zip -ry PhotoUploader-macOS-Universal.zip PhotoUploader.app
 
       - name: Upload Universal macOS app
         uses: actions/upload-artifact@v4
