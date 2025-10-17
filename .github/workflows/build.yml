@@ -69,17 +69,85 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
       
+      - name: Create PyInstaller spec file
+        run: |
+          cat > PhotoUploader.spec << 'EOF'
+          # -*- mode: python ; coding: utf-8 -*-
+
+          block_cipher = None
+
+          a = Analysis(
+              ['src/main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='PhotoUploader',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              console=False,
+              disable_windowed_traceback=False,
+              argv_emulation=True,
+              target_arch='x86_64',
+              codesign_identity=None,
+              entitlements_file=None,
+          )
+
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=False,
+              upx_exclude=[],
+              name='PhotoUploader',
+          )
+
+          app = BUNDLE(
+              coll,
+              name='PhotoUploader.app',
+              icon=None,
+              bundle_identifier='com.yourcompany.photouploader',
+              version='1.0.0',
+              info_plist={
+                  'NSHighResolutionCapable': 'True',
+                  'LSMinimumSystemVersion': '10.13.0',
+                  'NSRequiresAquaSystemAppearance': 'False',
+              },
+          )
+          EOF
+
       - name: Build macOS app for Intel
         run: |
-          pyinstaller --windowed --noconfirm \
-            --name PhotoUploader \
-            --osx-bundle-identifier com.yourcompany.photouploader \
-            --target-arch x86_64 \
-            src/main.py
+          pyinstaller PhotoUploader.spec --clean --noconfirm
           
           echo "--- Verifying architecture ---"
           lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
           file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Checking app bundle structure ---"
+          ls -la dist/PhotoUploader.app/Contents/
+          ls -la dist/PhotoUploader.app/Contents/MacOS/
           
           echo "--- Setting permissions ---"
           chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
@@ -98,6 +166,92 @@ jobs:
             -srcfolder PhotoUploader.app \
             -ov -format UDZO \
             PhotoUploader-macOS-Intel.dmg
+      
+      - name: Create debug version with console
+        run: |
+          # Create debug spec with console enabled
+          cat > PhotoUploader-Debug.spec << 'EOF'
+          # -*- mode: python ; coding: utf-8 -*-
+
+          block_cipher = None
+
+          a = Analysis(
+              ['src/main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='PhotoUploader-Debug',
+              debug=True,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              console=True,
+              disable_windowed_traceback=False,
+              argv_emulation=True,
+              target_arch='x86_64',
+              codesign_identity=None,
+              entitlements_file=None,
+          )
+
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=False,
+              upx_exclude=[],
+              name='PhotoUploader-Debug',
+          )
+
+          app = BUNDLE(
+              coll,
+              name='PhotoUploader-Debug.app',
+              icon=None,
+              bundle_identifier='com.yourcompany.photouploader.debug',
+              version='1.0.0',
+              info_plist={
+                  'NSHighResolutionCapable': 'True',
+                  'LSMinimumSystemVersion': '10.13.0',
+                  'NSRequiresAquaSystemAppearance': 'False',
+              },
+          )
+          EOF
+          
+          pyinstaller PhotoUploader-Debug.spec --clean --noconfirm
+          chmod +x dist/PhotoUploader-Debug.app/Contents/MacOS/PhotoUploader-Debug
+          codesign --force --deep --sign - dist/PhotoUploader-Debug.app
+          xattr -cr dist/PhotoUploader-Debug.app
+          
+          cd dist
+          hdiutil create -volname "PhotoUploader Intel Debug" \
+            -srcfolder PhotoUploader-Debug.app \
+            -ov -format UDZO \
+            PhotoUploader-macOS-Intel-Debug.dmg
+      
+      - name: Upload debug build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-macOS-Intel-Debug
+          path: dist/PhotoUploader-macOS-Intel-Debug.dmg
       
       - name: Upload Intel macOS artifact
         uses: actions/upload-artifact@v4
@@ -122,17 +276,85 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
       
+      - name: Create PyInstaller spec file
+        run: |
+          cat > PhotoUploader.spec << 'EOF'
+          # -*- mode: python ; coding: utf-8 -*-
+
+          block_cipher = None
+
+          a = Analysis(
+              ['src/main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='PhotoUploader',
+              debug=False,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              console=False,
+              disable_windowed_traceback=False,
+              argv_emulation=True,
+              target_arch='arm64',
+              codesign_identity=None,
+              entitlements_file=None,
+          )
+
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=False,
+              upx_exclude=[],
+              name='PhotoUploader',
+          )
+
+          app = BUNDLE(
+              coll,
+              name='PhotoUploader.app',
+              icon=None,
+              bundle_identifier='com.yourcompany.photouploader',
+              version='1.0.0',
+              info_plist={
+                  'NSHighResolutionCapable': 'True',
+                  'LSMinimumSystemVersion': '10.13.0',
+                  'NSRequiresAquaSystemAppearance': 'False',
+              },
+          )
+          EOF
+
       - name: Build macOS app for Apple Silicon
         run: |
-          pyinstaller --windowed --noconfirm \
-            --name PhotoUploader \
-            --osx-bundle-identifier com.yourcompany.photouploader \
-            --target-arch arm64 \
-            src/main.py
+          pyinstaller PhotoUploader.spec --clean --noconfirm
           
           echo "--- Verifying architecture ---"
           lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
           file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Checking app bundle structure ---"
+          ls -la dist/PhotoUploader.app/Contents/
+          ls -la dist/PhotoUploader.app/Contents/MacOS/
           
           echo "--- Setting permissions ---"
           chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
@@ -151,6 +373,92 @@ jobs:
             -srcfolder PhotoUploader.app \
             -ov -format UDZO \
             PhotoUploader-macOS-AppleSilicon.dmg
+      
+      - name: Create debug version with console
+        run: |
+          # Create debug spec with console enabled
+          cat > PhotoUploader-Debug.spec << 'EOF'
+          # -*- mode: python ; coding: utf-8 -*-
+
+          block_cipher = None
+
+          a = Analysis(
+              ['src/main.py'],
+              pathex=[],
+              binaries=[],
+              datas=[],
+              hiddenimports=[],
+              hookspath=[],
+              hooksconfig={},
+              runtime_hooks=[],
+              excludes=[],
+              win_no_prefer_redirects=False,
+              win_private_assemblies=False,
+              cipher=block_cipher,
+              noarchive=False,
+          )
+
+          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+
+          exe = EXE(
+              pyz,
+              a.scripts,
+              [],
+              exclude_binaries=True,
+              name='PhotoUploader-Debug',
+              debug=True,
+              bootloader_ignore_signals=False,
+              strip=False,
+              upx=False,
+              console=True,
+              disable_windowed_traceback=False,
+              argv_emulation=True,
+              target_arch='arm64',
+              codesign_identity=None,
+              entitlements_file=None,
+          )
+
+          coll = COLLECT(
+              exe,
+              a.binaries,
+              a.zipfiles,
+              a.datas,
+              strip=False,
+              upx=False,
+              upx_exclude=[],
+              name='PhotoUploader-Debug',
+          )
+
+          app = BUNDLE(
+              coll,
+              name='PhotoUploader-Debug.app',
+              icon=None,
+              bundle_identifier='com.yourcompany.photouploader.debug',
+              version='1.0.0',
+              info_plist={
+                  'NSHighResolutionCapable': 'True',
+                  'LSMinimumSystemVersion': '10.13.0',
+                  'NSRequiresAquaSystemAppearance': 'False',
+              },
+          )
+          EOF
+          
+          pyinstaller PhotoUploader-Debug.spec --clean --noconfirm
+          chmod +x dist/PhotoUploader-Debug.app/Contents/MacOS/PhotoUploader-Debug
+          codesign --force --deep --sign - dist/PhotoUploader-Debug.app
+          xattr -cr dist/PhotoUploader-Debug.app
+          
+          cd dist
+          hdiutil create -volname "PhotoUploader Apple Silicon Debug" \
+            -srcfolder PhotoUploader-Debug.app \
+            -ov -format UDZO \
+            PhotoUploader-macOS-AppleSilicon-Debug.dmg
+      
+      - name: Upload debug build
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoUploader-macOS-AppleSilicon-Debug
+          path: dist/PhotoUploader-macOS-AppleSilicon-Debug.dmg
       
       - name: Upload Apple Silicon macOS artifact
         uses: actions/upload-artifact@v4
