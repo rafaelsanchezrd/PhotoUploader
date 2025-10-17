@@ -53,8 +53,8 @@ jobs:
           path: dist/PhotoUploader
 
   # ---------------- macOS BUILD (Intel x86_64) ----------------
-  build-macos-x86_64:
-    runs-on: macos-13 # Use an Intel-based runner
+  build-macos-intel:
+    runs-on: macos-13 # Intel-based runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -68,24 +68,46 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-      - name: Build macOS app for x86_64
+      
+      - name: Build macOS app for Intel
         run: |
-          pyinstaller --windowed --noconfirm --name PhotoUploader src/main.py
-          echo "Verifying architecture..."
-          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader | grep "x86_64"
-      - name: Zip the .app bundle
+          pyinstaller --windowed --noconfirm \
+            --name PhotoUploader \
+            --osx-bundle-identifier com.yourcompany.photouploader \
+            --target-arch x86_64 \
+            src/main.py
+          
+          echo "--- Verifying architecture ---"
+          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Setting permissions ---"
+          chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Ad-hoc signing ---"
+          codesign --force --deep --sign - dist/PhotoUploader.app
+          codesign --verify --verbose dist/PhotoUploader.app
+          
+          echo "--- Removing quarantine attributes ---"
+          xattr -cr dist/PhotoUploader.app
+      
+      - name: Create DMG for Intel
         run: |
           cd dist
-          zip -ry PhotoUploader-x86_64.zip PhotoUploader.app
-      - name: Upload macOS x86_64 artifact
+          hdiutil create -volname "PhotoUploader Intel" \
+            -srcfolder PhotoUploader.app \
+            -ov -format UDZO \
+            PhotoUploader-macOS-Intel.dmg
+      
+      - name: Upload Intel macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-x86_64-artifact
-          path: dist/PhotoUploader-x86_64.zip
+          name: PhotoUploader-macOS-Intel
+          path: dist/PhotoUploader-macOS-Intel.dmg
 
-  # ---------------- macOS BUILD (Apple Silicon arm64) ----------------
-  build-macos-arm64:
-    runs-on: macos-14 # Use an ARM-based (Apple Silicon) runner
+  # ---------------- macOS BUILD (Apple Silicon ARM64) ----------------
+  build-macos-apple-silicon:
+    runs-on: macos-14 # ARM-based (Apple Silicon) runner
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -99,84 +121,39 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-      - name: Build macOS app for arm64
+      
+      - name: Build macOS app for Apple Silicon
         run: |
-          pyinstaller --windowed --noconfirm --name PhotoUploader src/main.py
-          echo "Verifying architecture..."
-          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader | grep "arm64"
-      - name: Zip the .app bundle
+          pyinstaller --windowed --noconfirm \
+            --name PhotoUploader \
+            --osx-bundle-identifier com.yourcompany.photouploader \
+            --target-arch arm64 \
+            src/main.py
+          
+          echo "--- Verifying architecture ---"
+          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Setting permissions ---"
+          chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
+          
+          echo "--- Ad-hoc signing ---"
+          codesign --force --deep --sign - dist/PhotoUploader.app
+          codesign --verify --verbose dist/PhotoUploader.app
+          
+          echo "--- Removing quarantine attributes ---"
+          xattr -cr dist/PhotoUploader.app
+      
+      - name: Create DMG for Apple Silicon
         run: |
           cd dist
-          zip -ry PhotoUploader-arm64.zip PhotoUploader.app
-      - name: Upload macOS arm64 artifact
+          hdiutil create -volname "PhotoUploader Apple Silicon" \
+            -srcfolder PhotoUploader.app \
+            -ov -format UDZO \
+            PhotoUploader-macOS-AppleSilicon.dmg
+      
+      - name: Upload Apple Silicon macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-arm64-artifact
-          path: dist/PhotoUploader-arm64.zip
-
-  # ---------------- MERGE MACOS BUILDS INTO UNIVERSAL APP ----------------
-  merge-macos-universal:
-    needs: [build-macos-x86_64, build-macos-arm64]
-    runs-on: macos-latest
-    steps:
-      - name: Download all macOS artifacts
-        uses: actions/download-artifact@v4
-
-      - name: Unzip, merge, and verify universal app
-        run: |
-          set -e # Exit immediately if a command fails
-
-          echo "--- Unzipping artifacts ---"
-          unzip "PhotoUploader-arm64-artifact/PhotoUploader-arm64.zip" -d "arm64-build"
-          unzip "PhotoUploader-x86_64-artifact/PhotoUploader-x86_64.zip" -d "x86_64-build"
-          
-          echo "--- Verifying unzipped ARM artifact ---"
-          ls -R arm64-build
-          lipo -info "arm64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader"
-          
-          echo "--- Verifying unzipped Intel artifact ---"
-          ls -R x86_64-build
-          lipo -info "x86_64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader"
-
-          echo "--- Creating universal app structure ---"
-          mkdir -p dist
-          cp -R "arm64-build/PhotoUploader.app" "dist/PhotoUploader.app"
-
-          echo "--- Creating universal binary with lipo ---"
-          lipo -create \
-            "arm64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader" \
-            "x86_64-build/PhotoUploader.app/Contents/MacOS/PhotoUploader" \
-            -output "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
-
-          echo "--- Verifying the final universal binary ---"
-          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
-          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "x86_64"
-          lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "arm64"
-          echo "Universal binary successfully verified."
-
-          echo "--- Setting proper executable permissions ---"
-          chmod +x "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
-          
-          echo "--- Removing any existing signatures ---"
-          codesign --remove-signature "dist/PhotoUploader.app" 2>/dev/null || true
-          
-          echo "--- Ad-hoc code signing the universal binary ---"
-          codesign --force --deep --sign - "dist/PhotoUploader.app"
-          
-          echo "--- Verifying code signature ---"
-          codesign --verify --verbose "dist/PhotoUploader.app"
-          codesign -dv "dist/PhotoUploader.app"
-          
-          echo "--- Removing quarantine attribute ---"
-          xattr -cr "dist/PhotoUploader.app"
-          
-          echo "--- Zipping the universal app ---"
-          cd dist
-          zip -ry PhotoUploader-macOS-Universal.zip PhotoUploader.app
-          echo "Zipping complete."
-
-      - name: Upload Universal macOS app
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-macOS-Universal
-          path: dist/PhotoUploader-macOS-Universal.zip
+          name: PhotoUploader-macOS-AppleSilicon
+          path: dist/PhotoUploader-macOS-AppleSilicon.dmg
