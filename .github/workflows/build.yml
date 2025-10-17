@@ -153,6 +153,22 @@ jobs:
           lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "x86_64"
           lipo -info "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader" | grep "arm64"
           echo "Universal binary successfully verified."
+
+          echo "--- Setting proper executable permissions ---"
+          chmod +x "dist/PhotoUploader.app/Contents/MacOS/PhotoUploader"
+          
+          echo "--- Removing any existing signatures ---"
+          codesign --remove-signature "dist/PhotoUploader.app" 2>/dev/null || true
+          
+          echo "--- Ad-hoc code signing the universal binary ---"
+          codesign --force --deep --sign - "dist/PhotoUploader.app"
+          
+          echo "--- Verifying code signature ---"
+          codesign --verify --verbose "dist/PhotoUploader.app"
+          codesign -dv "dist/PhotoUploader.app"
+          
+          echo "--- Removing quarantine attribute ---"
+          xattr -cr "dist/PhotoUploader.app"
           
           echo "--- Zipping the universal app ---"
           cd dist
