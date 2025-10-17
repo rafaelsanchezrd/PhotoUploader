@@ -12,21 +12,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pyinstaller
-
       - name: Build Windows executable
         run: |
           pyinstaller --onefile --windowed --name PhotoUploader src/main.py
-
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
@@ -39,59 +35,54 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pyinstaller
-
       - name: Build Linux executable
         run: |
           pyinstaller --onefile --windowed --name PhotoUploader src/main.py
-
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: PhotoUploader-Linux
           path: dist/PhotoUploader
 
-  # ---------------- macOS UNIVERSAL BUILD ----------------
+  # ---------------- macOS BUILD (both architectures) ----------------
   build-macos:
     runs-on: macos-latest
     strategy:
       matrix:
         arch: [arm64, x86_64]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install pyinstaller
-
       - name: Build macOS app for ${{ matrix.arch }}
         run: |
-          pyinstaller --windowed --name PhotoUploader-${{ matrix.arch }} src/main.py
-
-      - name: Upload per-arch macOS app
+          pyinstaller --windowed --name PhotoUploader src/main.py
+          echo "Verifying architecture..."
+          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader || true
+        env:
+          ARCHFLAGS: "-arch ${{ matrix.arch }}"
+      - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoUploader-macOS-${{ matrix.arch }}
-          path: dist/PhotoUploader-${{ matrix.arch }}.app
+          name: PhotoUploader-${{ matrix.arch }}
+          path: dist/PhotoUploader.app
 
-  # ---------------- MERGE macOS UNIVERSAL APP ----------------
+  # ---------------- MERGE INTO UNIVERSAL APP ----------------
   merge-macos-universal:
     needs: build-macos
     runs-on: macos-latest
@@ -99,23 +90,26 @@ jobs:
       - name: Download ARM build
         uses: actions/download-artifact@v4
         with:
-          name: PhotoUploader-macOS-arm64
+          name: PhotoUploader-arm64
           path: arm
 
       - name: Download Intel build
         uses: actions/download-artifact@v4
         with:
-          name: PhotoUploader-macOS-x86_64
+          name: PhotoUploader-x86_64
           path: intel
 
-      - name: Create universal binary with lipo
+      - name: Merge Intel + ARM into universal app
         run: |
-          mkdir -p dist/PhotoUploader-Universal.app/Contents/MacOS
-          cp -R arm/PhotoUploader-arm64.app/Contents/* dist/PhotoUploader-Universal.app/Contents/
+          echo "Creating universal binary..."
+          mkdir -p dist/PhotoUploader-Universal.app/Contents
+          cp -R arm/PhotoUploader.app/Contents/* dist/PhotoUploader-Universal.app/Contents/
           lipo -create \
-            arm/PhotoUploader-arm64.app/Contents/MacOS/PhotoUploader-arm64 \
-            intel/PhotoUploader-x86_64.app/Contents/MacOS/PhotoUploader-x86_64 \
+            arm/PhotoUploader.app/Contents/MacOS/PhotoUploader \
+            intel/PhotoUploader.app/Contents/MacOS/PhotoUploader \
             -output dist/PhotoUploader-Universal.app/Contents/MacOS/PhotoUploader
+          echo "Universal binary created successfully."
+          file dist/PhotoUploader-Universal.app/Contents/MacOS/PhotoUploader
           cd dist
           zip -r PhotoUploader-macOS-Universal.zip PhotoUploader-Universal.app
 
