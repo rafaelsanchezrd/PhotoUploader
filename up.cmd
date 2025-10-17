@@ -1,3 +1,5 @@
+@echo off
+set /p commitMessage="Enter your commit message: "
 git add .
-git commit -am "make it better"
-git push heroku master
+git commit -m "%commitMessage%"
+git push

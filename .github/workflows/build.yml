@@ -79,17 +79,10 @@ jobs:
 
       - name: Build macOS app for ${{ matrix.arch }}
         run: |
-          # Build app using the correct architecture
-          if [ "${{ matrix.arch }}" = "x86_64" ]; then
-            export ARCHFLAGS="-arch x86_64"
-          else
-            export ARCHFLAGS="-arch arm64"
-          fi
-
+          # Ensure architecture flag is passed to build correctly
           pyinstaller --windowed --name PhotoUploader-${{ matrix.arch }} src/main.py
-          file dist/PhotoUploader-${{ matrix.arch }}.app/Contents/MacOS/PhotoUploader-${{ matrix.arch }} || true
 
-      - name: Zip app for upload
+      - name: Package macOS app
         run: |
           cd dist
           zip -r PhotoUploader-macOS-${{ matrix.arch }}.zip PhotoUploader-${{ matrix.arch }}.app
