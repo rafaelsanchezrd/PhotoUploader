@@ -23,8 +23,8 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [2/5] Installing PyInstaller...
-pip install pyinstaller
+echo [2/5] Installing PyInstaller and Pillow...
+pip install pyinstaller Pillow
 if %errorlevel% neq 0 (
     echo ERROR: Failed to install PyInstaller
     pause
@@ -32,18 +32,32 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [3/5] Cleaning previous builds...
+echo [3/5] Converting icon to ICO format...
+if not exist uploadericon.ico (
+    echo Converting uploadericon.png to uploadericon.ico...
+    python -c "from PIL import Image; img = Image.open('uploadericon.png'); img.save('uploadericon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+    if exist uploadericon.ico (
+        echo Successfully created uploadericon.ico
+    ) else (
+        echo WARNING: Could not create .ico file, build will continue without icon
+    )
+) else (
+    echo uploadericon.ico already exists
+)
+
+echo.
+echo [4/5] Cleaning previous builds...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist SnapFlow.spec del SnapFlow.spec
 
 echo.
-echo [4/5] Building executable with optimized settings...
+echo [5/5] Building executable with optimized settings...
 pyinstaller --clean ^
     --onefile ^
     --windowed ^
     --name "SnapFlow" ^
-    --icon=uploadericon.png ^
+    --icon=uploadericon.ico ^
     --add-data "src/config.py;." ^
     --add-data "src/dropbox_uploader.py;." ^
     --add-data "src/webhook_client.py;." ^
@@ -69,7 +83,7 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [5/5] Calculating SHA256 hash...
+echo [6/6] Calculating SHA256 hash...
 certutil -hashfile dist\SnapFlow.exe SHA256 > dist\SnapFlow.exe.sha256.txt
 if %errorlevel% equ 0 (
     echo Hash saved to dist\SnapFlow.exe.sha256.txt

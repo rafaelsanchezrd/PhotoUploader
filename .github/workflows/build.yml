@@ -50,6 +50,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
+        pip install Pillow
+    
+    - name: Convert PNG icon to ICO
+      shell: pwsh
+      run: |
+        if (Test-Path "uploadericon.ico") {
+          Write-Host "✓ uploadericon.ico already exists"
+        } else {
+          Write-Host "Converting uploadericon.png to uploadericon.ico..."
+          python -c "from PIL import Image; img = Image.open('uploadericon.png'); img.save('uploadericon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+          if (Test-Path "uploadericon.ico") {
+            Write-Host "✓ Successfully created uploadericon.ico"
+          } else {
+            Write-Host "✗ Failed to create .ico file"
+            exit 1
+          }
+        }
     
     - name: Verify files before build
       shell: pwsh
@@ -84,7 +101,7 @@ jobs:
         
         # Build from src/main.py
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" `
-          --icon=uploadericon.png `
+          --icon=uploadericon.ico `
           --add-data "src/config.py;." `
           --add-data "src/dropbox_uploader.py;." `
           --add-data "src/webhook_client.py;." `
