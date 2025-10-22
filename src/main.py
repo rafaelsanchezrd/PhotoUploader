@@ -18,6 +18,15 @@ from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# Optional PIL import for icon support
+try:
+    from PIL import Image, ImageTk
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    print("⚠️  Warning: Pillow not installed. Icons will not be displayed.")
+    print("   To enable icons, run: pip install Pillow")
+
 # Add src directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -33,13 +42,52 @@ from config import PROGRESS_UPDATE_THRESHOLD
 setup_logging()
 logger = logging.getLogger(__name__)
 
+# UI Color Scheme - Professional and Clean
+COLORS = {
+    'header_bg': '#F8F9FA',        # Light gray background
+    'header_border': '#DEE2E6',    # Subtle border
+    'accent': '#007BFF',           # Primary blue
+    'success': '#28A745',          # Green for success
+    'warning': '#FFC107',          # Yellow/orange for warnings
+    'error': '#DC3545',            # Red for errors
+    'text_primary': '#212529',     # Dark text
+    'text_secondary': '#6C757D',   # Gray text
+    'bg_light': '#FFFFFF',         # White background
+}
+
+# Platform-specific fonts
+if sys.platform == 'win32':
+    FONTS = {
+        'app_title': ('Segoe UI', 20, 'bold'),
+        'subtitle': ('Segoe UI', 9),
+        'section_header': ('Segoe UI', 10, 'bold'),
+        'body': ('Segoe UI', 9),
+        'small': ('Segoe UI', 8),
+    }
+elif sys.platform == 'darwin':
+    FONTS = {
+        'app_title': ('SF Pro Display', 20, 'bold'),
+        'subtitle': ('SF Pro Text', 9),
+        'section_header': ('SF Pro Text', 10, 'bold'),
+        'body': ('SF Pro Text', 9),
+        'small': ('SF Pro Text', 8),
+    }
+else:
+    FONTS = {
+        'app_title': ('Arial', 20, 'bold'),
+        'subtitle': ('Arial', 9),
+        'section_header': ('Arial', 10, 'bold'),
+        'body': ('Arial', 9),
+        'small': ('Arial', 8),
+    }
+
 class PhotoUploaderApp:
     """Main application window."""
     
     def __init__(self, root):
         self.root = root
-        self.root.title("FlowSnap Uploader")
-        self.root.geometry("700x650")
+        self.root.title("SnapFlow - Professional Photo & Video Uploader")
+        self.root.geometry("750x720")
         self.root.resizable(False, False)
         
         # State variables
@@ -66,6 +114,10 @@ class PhotoUploaderApp:
         # Initialize clients
         self.webhook_client = None
         self.dropbox_uploader = None
+        
+        # UI Resources
+        self.app_icon = None
+        self.window_icon = None
         
         self._create_widgets()
         self._check_photographer_id()
@@ -96,6 +148,76 @@ class PhotoUploaderApp:
         else:
             self._initialize_clients()
     
+    
+    def _load_app_icon(self):
+        """Load application icon for display in UI and window."""
+        try:
+            # Try to find icon file
+            icon_paths = [
+                'uploadericon.png',  # Same directory
+                '../uploadericon.png',  # Parent directory
+                os.path.join(os.path.dirname(__file__), 'uploadericon.png'),
+                os.path.join(os.path.dirname(__file__), '..', 'uploadericon.png'),
+            ]
+            
+            icon_file = None
+            for path in icon_paths:
+                if os.path.exists(path):
+                    icon_file = path
+                    break
+            
+            if icon_file:
+                # Load icon for UI display (64x64 for better quality)
+                img = Image.open(icon_file)
+                
+                # Use high-quality downsampling
+                img = img.resize((64, 64), Image.Resampling.LANCZOS)
+                
+                # Optional: Enhance sharpness for better display
+                try:
+                    from PIL import ImageEnhance
+                    enhancer = ImageEnhance.Sharpness(img)
+                    img = enhancer.enhance(1.2)  # Slightly sharpen
+                except:
+                    pass  # If enhancement fails, use original
+                
+                self.app_icon = ImageTk.PhotoImage(img)
+                
+                # Set window icon
+                self._set_window_icon(icon_file)
+                
+                logger.info(f"Loaded app icon from: {icon_file}")
+            else:
+                logger.warning("Icon file not found, using default")
+        except Exception as e:
+            logger.error(f"Failed to load icon: {e}")
+    
+    def _set_window_icon(self, icon_path):
+        """Set window icon in title bar and taskbar."""
+        try:
+            if sys.platform == 'win32':
+                # Windows: Try to use .ico file if available
+                ico_path = icon_path.replace('.png', '.ico')
+                if os.path.exists(ico_path):
+                    self.root.iconbitmap(ico_path)
+                    logger.info("Set Windows .ico icon")
+                else:
+                    # Use PNG as fallback
+                    icon_img = Image.open(icon_path)
+                    icon_img = icon_img.resize((32, 32), Image.Resampling.LANCZOS)
+                    self.window_icon = ImageTk.PhotoImage(icon_img)
+                    self.root.iconphoto(True, self.window_icon)
+                    logger.info("Set Windows PNG icon")
+            else:
+                # macOS/Linux: Use PNG
+                icon_img = Image.open(icon_path)
+                icon_img = icon_img.resize((32, 32), Image.Resampling.LANCZOS)
+                self.window_icon = ImageTk.PhotoImage(icon_img)
+                self.root.iconphoto(True, self.window_icon)
+                logger.info("Set macOS/Linux icon")
+        except Exception as e:
+            logger.error(f"Failed to set window icon: {e}")
+
     def _prompt_photographer_id(self):
         """Show dialog to enter photographer ID."""
         dialog = tk.Toplevel(self.root)
@@ -105,9 +227,9 @@ class PhotoUploaderApp:
         dialog.grab_set()
         
         ttk.Label(dialog, text="Enter Your Name:", 
-                 font=('Arial', 11)).pack(pady=20)
+                 font=('Segoe UI', 11)).pack(pady=20)
         
-        id_entry = ttk.Entry(dialog, width=30, font=('Arial', 10))
+        id_entry = ttk.Entry(dialog, width=30, font=('Segoe UI', 10))
         id_entry.pack(pady=10)
         id_entry.focus()
         
@@ -187,19 +309,77 @@ class PhotoUploaderApp:
     def _create_widgets(self):
         """Create UI widgets with improved layout."""
         
-        # HEADER
-        header_frame = ttk.Frame(self.root, padding=15)
+        # HEADER - Enhanced with icon and professional styling
+        header_frame = ttk.Frame(self.root)
         header_frame.pack(fill=tk.X)
         
-        ttk.Label(header_frame, text="📸 SnapFlow", 
-                 font=('Arial', 16, 'bold')).pack()
+        # Header with professional styling
+        header_bg = tk.Frame(header_frame, bg=COLORS['header_bg'], height=110)
+        header_bg.pack(fill=tk.X)
         
-        self.photographer_label = ttk.Label(header_frame, text="Loading...", 
-                                           font=('Arial', 9))
-        self.photographer_label.pack()
+        # Load app icon first
+        self._load_app_icon()
+        
+        # Content container with proper padding
+        content_container = tk.Frame(header_bg, bg=COLORS['header_bg'])
+        content_container.pack(fill=tk.X, padx=25, pady=20)
+        
+        # Horizontal layout: Icon + Text with improved spacing
+        icon_text_layout = tk.Frame(content_container, bg=COLORS['header_bg'])
+        icon_text_layout.pack(anchor=tk.W)
+        
+        # Icon with better positioning (if loaded)
+        if self.app_icon:
+            # Icon container for better control
+            icon_container = tk.Frame(icon_text_layout, bg=COLORS['header_bg'])
+            icon_container.pack(side=tk.LEFT, padx=(0, 20))  # Increased spacing from 15 to 20
+            
+            icon_label = tk.Label(icon_container, image=self.app_icon, bg=COLORS['header_bg'])
+            icon_label.pack()
+        
+        # Text section with improved hierarchy
+        text_container = tk.Frame(icon_text_layout, bg=COLORS['header_bg'])
+        text_container.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # App name - Larger, bolder
+        app_name_label = tk.Label(
+            text_container,
+            text="SnapFlow Uploader",
+            font=FONTS['app_title'],
+            fg=COLORS['text_primary'],
+            bg=COLORS['header_bg'],
+            anchor=tk.W
+        )
+        app_name_label.pack(anchor=tk.W)
+        
+        # Subtitle with better spacing
+        subtitle_label = tk.Label(
+            text_container,
+            text="Professional Photo & Video Uploader",
+            font=FONTS['subtitle'],
+            fg=COLORS['text_secondary'],
+            bg=COLORS['header_bg'],
+            anchor=tk.W
+        )
+        subtitle_label.pack(anchor=tk.W, pady=(3, 0))  # Added top padding
+        
+        # Photographer info with accent color
+        self.photographer_label = tk.Label(
+            text_container,
+            text="Loading...",
+            font=FONTS['body'],
+            fg=COLORS['accent'],
+            bg=COLORS['header_bg'],
+            anchor=tk.W
+        )
+        self.photographer_label.pack(anchor=tk.W, pady=(8, 0))  # More spacing from subtitle
+        
+        # Bottom border line
+        border_line = tk.Frame(self.root, bg=COLORS['header_border'], height=1)
+        border_line.pack(fill=tk.X)
         
         # TWO-COLUMN ROW: MARKET (40%) + PHOTOS (60%)
-        top_row_frame = ttk.Frame(self.root, padding=(20, 10))
+        top_row_frame = ttk.Frame(self.root, padding=(20, 15))  # Increased vertical padding
         top_row_frame.pack(fill=tk.X)
         
         # LEFT COLUMN: MARKET (40%)
@@ -211,7 +391,7 @@ class PhotoUploaderApp:
         
         self.market_combo = ttk.Combobox(market_frame, 
                                         textvariable=self.selected_market,
-                                        width=20, state='disabled', font=('Arial', 10))
+                                        width=20, state='disabled', font=('Segoe UI', 10))
         self.market_combo.pack(fill=tk.X)
         self.market_combo.bind('<<ComboboxSelected>>', self._on_market_changed)
         
@@ -221,22 +401,22 @@ class PhotoUploaderApp:
         
         # Button container for folder and file selection
         button_container = ttk.Frame(folder_frame)
-        button_container.pack(pady=(0, 10))
+        button_container.pack(pady=(5, 15))
         
         self.select_folder_btn = ttk.Button(button_container, text="📁 Select Folder", 
                                            command=self._select_folder)
-        self.select_folder_btn.pack(side=tk.LEFT, padx=(0, 5))
+        self.select_folder_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         self.select_files_btn = ttk.Button(button_container, text="📄 Select Files", 
                                           command=self._select_files)
         self.select_files_btn.pack(side=tk.LEFT)
         
         self.folder_label = ttk.Label(folder_frame, text="No folder selected", 
-                                     font=('Arial', 9), foreground='gray')
+                                     font=('Segoe UI', 9), foreground='#6C757D')
         self.folder_label.pack(anchor=tk.W)
         
         self.file_info_label = ttk.Label(folder_frame, text="", 
-                                        font=('Arial', 9), foreground='blue')
+                                        font=('Segoe UI', 9), foreground='#007BFF')
         self.file_info_label.pack(anchor=tk.W, pady=(5, 0))
         
         # CONTENT TYPE SELECTION (FULL WIDTH)
@@ -263,7 +443,7 @@ class PhotoUploaderApp:
                        command=self._on_content_type_changed).pack(side=tk.LEFT)
         
         self.content_info_label = ttk.Label(content_frame, text="Standard daytime photos for automated processing", 
-                                           font=('Arial', 8), foreground='gray')
+                                           font=('Segoe UI', 8), foreground='#6C757D')
         self.content_info_label.pack(anchor=tk.W, pady=(5, 0))
         
         # SITE ID & VALIDATION (FULL WIDTH)
@@ -278,7 +458,7 @@ class PhotoUploaderApp:
         self.site_id_var = tk.StringVar()
         self.site_id_var.trace('w', lambda *args: self._update_validate_button_state())
         self.site_id_entry = ttk.Entry(input_frame, textvariable=self.site_id_var, 
-                                       width=25, font=('Arial', 11))
+                                       width=25, font=('Segoe UI', 11))
         self.site_id_entry.pack(side=tk.LEFT, padx=(0, 10))
         
         self.validate_btn = ttk.Button(input_frame, text="Validate", 
@@ -286,7 +466,7 @@ class PhotoUploaderApp:
         self.validate_btn.pack(side=tk.LEFT)
         
         self.site_status_label = ttk.Label(site_frame, text="", 
-                                          font=('Arial', 9), wraplength=600)
+                                          font=('Segoe UI', 9), wraplength=600)
         self.site_status_label.pack(pady=(10, 0), anchor=tk.W)
         
         # UPLOAD SECTION (FULL WIDTH)
@@ -303,7 +483,7 @@ class PhotoUploaderApp:
         
         # Progress info
         self.progress_label = ttk.Label(upload_frame, text="", 
-                                       font=('Arial', 9))
+                                       font=('Segoe UI', 9))
         self.progress_label.pack()
         
         # Progress bar
@@ -313,11 +493,11 @@ class PhotoUploaderApp:
         
         # Status messages
         self.status_label = ttk.Label(upload_frame, text="", 
-                                     font=('Arial', 9), foreground='blue')
+                                     font=('Segoe UI', 9), foreground='#007BFF')
         self.status_label.pack()
         
         self.detail_label = ttk.Label(upload_frame, text="", 
-                                     font=('Arial', 8), foreground='gray')
+                                     font=('Segoe UI', 8), foreground='#6C757D')
         self.detail_label.pack(pady=(5, 0))
     
     def _on_market_changed(self, event=None):
@@ -378,7 +558,7 @@ class PhotoUploaderApp:
             return
         
         self.validate_btn.config(state='disabled')
-        self.site_status_label.config(text="Validating...", foreground='blue')
+        self.site_status_label.config(text="Validating...", foreground='#007BFF')
         
         thread = threading.Thread(target=self._validate_site_thread, 
                                  args=(market, site_id))
@@ -417,7 +597,7 @@ class PhotoUploaderApp:
             
             status_text = (f"✓ {result['client_name']}\n"
                           f"   {result['property_address']}")
-            self.site_status_label.config(text=status_text, foreground='green')
+            self.site_status_label.config(text=status_text, foreground='#28A745')
             
             self.upload_btn.config(state='normal')
             
@@ -428,7 +608,7 @@ class PhotoUploaderApp:
         else:
             error_msg = result.get('message', result.get('error', 'Unknown error'))
             self.site_status_label.config(text=f"✗ {error_msg}", 
-                                        foreground='red')
+                                        foreground='#DC3545')
             messagebox.showerror("Validation Failed", error_msg)
     
     def _select_files(self):
@@ -486,7 +666,7 @@ class PhotoUploaderApp:
         
         self.folder_label.config(
             text=f"✓ {file_count} file{'s' if file_count != 1 else ''} selected",
-            foreground='black'
+            foreground='#212529'
         )
         
         info_text = f"{format_bytes(self.total_size_bytes)} total"
@@ -517,7 +697,7 @@ class PhotoUploaderApp:
                                          "No valid photo files found in this folder")
                     return
                 
-                self.folder_label.config(text=folder_name, foreground='black')
+                self.folder_label.config(text=folder_name, foreground='#212529')
                 self.file_info_label.config(
                     text=f"{len(self.files_to_upload)} files • {format_bytes(self.total_size_bytes)}"
                 )
@@ -729,7 +909,7 @@ class PhotoUploaderApp:
         
         self.status_label.config(
             text=f"Uploading... (✓ {uploaded} | ✗ {failed})",
-            foreground='blue'
+            foreground='#007BFF'
         )
     
     def _upload_complete_success(self, completion_result: dict):
@@ -743,7 +923,7 @@ class PhotoUploaderApp:
         
         from config import PARALLEL_UPLOADS
         
-        self.status_label.config(text="✓ Upload Complete!", foreground='green')
+        self.status_label.config(text="✓ Upload Complete!", foreground='#28A745')
         self.detail_label.config(
             text=f"Uploaded {self.files_uploaded} files in {format_time(duration)} • Avg: {format_bytes(int(avg_speed))}/s"
         )
@@ -764,7 +944,7 @@ class PhotoUploaderApp:
         """Handle partial upload completion."""
         self.upload_in_progress = False
         
-        self.status_label.config(text="⚠ Upload Completed with Errors", foreground='orange')
+        self.status_label.config(text="⚠ Upload Completed with Errors", foreground='#FFC107')
         self.detail_label.config(
             text=f"Uploaded: {self.files_uploaded} • Failed: {self.files_failed}"
         )
@@ -782,7 +962,7 @@ class PhotoUploaderApp:
         """Handle upload failure."""
         self.upload_in_progress = False
         
-        self.status_label.config(text="✗ Upload Failed", foreground='red')
+        self.status_label.config(text="✗ Upload Failed", foreground='#DC3545')
         self.detail_label.config(text=error_msg)
         
         messagebox.showerror("Upload Failed", f"Upload failed:\n\n{error_msg}")
@@ -801,7 +981,7 @@ class PhotoUploaderApp:
         self.files_to_upload = []
         self.validated_site_info = None
         self.site_id_var.set("")
-        self.folder_label.config(text="No folder selected", foreground='gray')
+        self.folder_label.config(text="No folder selected", foreground='#6C757D')
         self.file_info_label.config(text="")
         self.site_status_label.config(text="")
         
@@ -811,10 +991,27 @@ class PhotoUploaderApp:
         self.detail_label.config(text="")
 
 def main():
-    """Main entry point."""
-    root = tk.Tk()
-    app = PhotoUploaderApp(root)
-    root.mainloop()
+    """Main entry point with error handling."""
+    try:
+        root = tk.Tk()
+        app = PhotoUploaderApp(root)
+        root.mainloop()
+    except Exception as e:
+        import traceback
+        error_msg = f"Fatal Error:\n\n{str(e)}\n\n{traceback.format_exc()}"
+        print(error_msg)
+        
+        # Try to show error in messagebox
+        try:
+            import tkinter.messagebox as mb
+            root = tk.Tk()
+            root.withdraw()
+            mb.showerror("SnapFlow - Fatal Error", error_msg)
+        except:
+            pass
+        
+        # Keep window open to see error
+        input("\nPress Enter to exit...")
 
 if __name__ == "__main__":
     main()
