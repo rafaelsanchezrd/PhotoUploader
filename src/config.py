@@ -11,7 +11,7 @@ from cryptography.fernet import Fernet
 # To generate a new key, run this in Python:
 #   from cryptography.fernet import Fernet
 #   print(Fernet.generate_key().decode())
-# 
+#
 # Then replace ENCRYPTION_KEY below with the output
 # ============================================
 
@@ -26,7 +26,7 @@ cipher = Fernet(ENCRYPTION_KEY)
 # ============================================
 # To encrypt your credentials, run this:
 #   cipher.encrypt(b"your_actual_credential").decode()
-# 
+#
 # Then replace the values below
 # ============================================
 
@@ -45,19 +45,57 @@ PARALLEL_UPLOADS = 4  # Number of concurrent file uploads
 PROGRESS_UPDATE_THRESHOLD = 25  # Send webhook update every 25%
 
 # Supported file extensions
-ALLOWED_EXTENSIONS = {
-    '.cr2', '.cr3',  # Canon RAW
-    '.nef', '.nrw',  # Nikon RAW
-    '.arw', '.srf', '.sr2',  # Sony RAW
-    '.dng',  # Adobe DNG
-    '.orf',  # Olympus RAW
-    '.rw2',  # Panasonic RAW
-    '.pef', '.ptx',  # Pentax RAW
-    '.raf',  # Fujifilm RAW
-    '.jpg', '.jpeg',  # JPEG
-    '.png',  # PNG
-    '.tif', '.tiff',  # TIFF
+# ============================================
+# PHOTOS - RAW and processed formats
+# ============================================
+PHOTO_EXTENSIONS = {
+    # Canon
+    '.cr2', '.cr3',
+    # Nikon
+    '.nef', '.nrw',
+    # Sony
+    '.arw', '.srf', '.sr2',
+    # Adobe
+    '.dng',
+    # Olympus
+    '.orf',
+    # Panasonic
+    '.rw2',
+    # Pentax
+    '.pef', '.ptx',
+    # Fujifilm
+    '.raf',
+    # Standard formats
+    '.jpg', '.jpeg',
+    '.png',
+    '.tif', '.tiff',
+    # WebP (modern format)
+    '.webp',
 }
+
+# ============================================
+# VIDEOS - Common formats
+# ============================================
+VIDEO_EXTENSIONS = {
+    # Most common
+    '.mp4',      # H.264/H.265 - Universal
+    '.mov',      # QuickTime - Apple/Canon/Nikon
+    # Professional
+    '.avi',      # Legacy but still used
+    '.mkv',      # High quality container
+    '.mts', '.m2ts',  # AVCHD - Sony/Panasonic
+    # Apple
+    '.m4v',      # iTunes/Apple
+    # Others
+    '.wmv',      # Windows Media
+    '.flv',      # Flash (legacy)
+    '.webm',     # Web format
+    '.3gp',      # Mobile
+    '.mpg', '.mpeg',  # MPEG
+}
+
+# Combine all allowed extensions
+ALLOWED_EXTENSIONS = PHOTO_EXTENSIONS | VIDEO_EXTENSIONS
 
 def decrypt_credential(encrypted_value: str) -> str:
     """Decrypt an encrypted credential."""
