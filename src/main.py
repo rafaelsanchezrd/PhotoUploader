@@ -501,7 +501,7 @@ class PhotoUploaderApp:
         
         logger.info(f"Selected {file_count} files, total size: {format_bytes(self.total_size_bytes)}")
         
-        def _select_folder(self):
+    def _select_folder(self):
         """Select folder containing photos."""
         folder_path = filedialog.askdirectory(title="Select Photo Folder")
         
