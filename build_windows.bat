@@ -5,9 +5,10 @@ echo   (Optimized to reduce AV false positives)
 echo ========================================
 echo.
 
-:: Check if main.py exists
-if not exist main.py (
-    echo ERROR: main.py not found. Run this script from the project root.
+:: Check if src/main.py exists
+if not exist src\main.py (
+    echo ERROR: src\main.py not found!
+    echo Make sure you're running this from the project root.
     pause
     exit /b 1
 )
@@ -34,7 +35,7 @@ echo.
 echo [3/5] Cleaning previous builds...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-if exist PhotoUploader.spec del PhotoUploader.spec
+if exist SnapFlow.spec del SnapFlow.spec
 
 echo.
 echo [4/5] Building executable with optimized settings...
@@ -43,6 +44,10 @@ pyinstaller --clean ^
     --windowed ^
     --name "SnapFlow" ^
     --icon=uploadericon.png ^
+    --add-data "src/config.py;." ^
+    --add-data "src/dropbox_uploader.py;." ^
+    --add-data "src/webhook_client.py;." ^
+    --add-data "src/utils.py;." ^
     --hidden-import=tkinter ^
     --hidden-import=cryptography ^
     --hidden-import=cryptography.fernet ^
@@ -55,7 +60,7 @@ pyinstaller --clean ^
     --exclude-module=pip ^
     --noupx ^
     --version-file=version_info.txt ^
-    main.py
+    src/main.py
 
 if %errorlevel% neq 0 (
     echo ERROR: Build failed
@@ -77,6 +82,15 @@ echo ========================================
 echo.
 echo Output: dist\SnapFlow.exe
 echo Hash:   dist\SnapFlow.exe.sha256.txt
+echo Size:   
+dir dist\SnapFlow.exe | find "SnapFlow.exe"
+echo.
+echo ========================================
+echo   TESTING
+echo ========================================
+echo.
+echo To test the application locally:
+echo   dist\SnapFlow.exe
 echo.
 echo ========================================
 echo   IMPORTANT - ANTIVIRUS WARNINGS
@@ -92,7 +106,6 @@ echo.
 echo 2. Submit false positive reports to:
 echo    - Microsoft Defender: https://www.microsoft.com/wdsi/filesubmission
 echo    - Norton: https://submit.norton.com/
-echo    - Others: See ANTIVIRUS_GUIDE.md
 echo.
 echo 3. For production: Get a code signing certificate
 echo    Cost: $100-400/year (eliminates most warnings)
@@ -100,7 +113,5 @@ echo.
 echo 4. Users should:
 echo    - Click "More info" -^> "Run anyway" in Windows Defender
 echo    - Or temporarily disable antivirus during install
-echo.
-echo See ANTIVIRUS_GUIDE.md for complete instructions.
 echo.
 pause

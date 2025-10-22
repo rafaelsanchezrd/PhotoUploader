@@ -7,8 +7,8 @@ echo "============================================"
 echo ""
 
 # Check if we're in the right directory
-if [ ! -f "main.py" ]; then
-    echo "ERROR: main.py not found. Please run this script from the project root."
+if [ ! -f "src/main.py" ]; then
+    echo "ERROR: src/main.py not found. Please run this script from the project root."
     exit 1
 fi
 
@@ -38,6 +38,10 @@ pyinstaller --clean \
     --windowed \
     --name "SnapFlow" \
     --icon=uploadericon.png \
+    --add-data "src/config.py:." \
+    --add-data "src/dropbox_uploader.py:." \
+    --add-data "src/webhook_client.py:." \
+    --add-data "src/utils.py:." \
     --hidden-import=cryptography \
     --hidden-import=cryptography.fernet \
     --hidden-import=dropbox \
@@ -48,7 +52,7 @@ pyinstaller --clean \
     --exclude-module=setuptools \
     --exclude-module=pip \
     --osx-bundle-identifier "com.snapflow.app" \
-    main.py
+    src/main.py
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Build failed"
@@ -66,29 +70,57 @@ echo "[6/6] Creating DMG installer..."
 if command -v create-dmg &> /dev/null; then
     echo "Creating DMG with create-dmg..."
     
-    # Create DMG
-    create-dmg \
-        --volname "SnapFlow" \
-        --volicon "uploadericon.png" \
-        --background "_dmgbackground.png" \
-        --window-pos 200 120 \
-        --window-size 600 400 \
-        --icon-size 100 \
-        --icon "SnapFlow.app" 175 190 \
-        --hide-extension "SnapFlow.app" \
-        --app-drop-link 425 190 \
-        --format UDZO \
-        "dist/SnapFlow.dmg" \
-        "dist/SnapFlow.app"
+    # Check for background image (note: file is .dmg-background.png)
+    if [ -f ".dmg-background.png" ]; then
+        echo "Found .dmg-background.png, creating fancy DMG..."
+        BACKGROUND=".dmg-background.png"
+    elif [ -f "_dmgbackground.png" ]; then
+        echo "Found _dmgbackground.png, creating fancy DMG..."
+        BACKGROUND="_dmgbackground.png"
+    else
+        echo "No background image found, creating simple DMG..."
+        BACKGROUND=""
+    fi
+    
+    if [ -n "$BACKGROUND" ]; then
+        # Create fancy DMG with background
+        create-dmg \
+            --volname "SnapFlow" \
+            --volicon "uploadericon.png" \
+            --background "$BACKGROUND" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SnapFlow.app" 175 190 \
+            --hide-extension "SnapFlow.app" \
+            --app-drop-link 425 190 \
+            --format UDZO \
+            "dist/SnapFlow.dmg" \
+            "dist/SnapFlow.app"
+    else
+        # Create simple DMG without background
+        create-dmg \
+            --volname "SnapFlow" \
+            --volicon "uploadericon.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SnapFlow.app" 175 190 \
+            --hide-extension "SnapFlow.app" \
+            --app-drop-link 425 190 \
+            --format UDZO \
+            "dist/SnapFlow.dmg" \
+            "dist/SnapFlow.app"
+    fi
     
     if [ $? -eq 0 ]; then
-        echo "✓ DMG created successfully: dist/PhotoUploader.dmg"
+        echo "✓ DMG created successfully: dist/SnapFlow.dmg"
     else
         echo "⚠ DMG creation had issues, but app bundle is available"
     fi
 else
     echo "⚠ create-dmg not installed. Install with: brew install create-dmg"
-    echo "  App bundle is available at: dist/PhotoUploader.app"
+    echo "  App bundle is available at: dist/SnapFlow.app"
     echo ""
     echo "Alternative: Creating simple DMG with hdiutil..."
     
@@ -106,7 +138,7 @@ else
     rm -rf dist/dmg_temp
     
     if [ $? -eq 0 ]; then
-        echo "✓ Simple DMG created: dist/PhotoUploader.dmg"
+        echo "✓ Simple DMG created: dist/SnapFlow.dmg"
     fi
 fi
 
@@ -119,6 +151,7 @@ echo "📦 Outputs:"
 echo "   - App Bundle: dist/SnapFlow.app"
 if [ -f "dist/SnapFlow.dmg" ]; then
     echo "   - DMG Installer: dist/SnapFlow.dmg"
+    ls -lh dist/SnapFlow.dmg
 fi
 echo ""
 echo "🧪 Testing locally:"

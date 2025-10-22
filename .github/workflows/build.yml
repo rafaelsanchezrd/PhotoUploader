@@ -24,17 +24,19 @@ jobs:
     - name: Debug - List repository contents
       shell: pwsh
       run: |
-        Write-Host "=== Current Directory ==="
+        Write-Host "=== Repository Structure ==="
         Get-Location
         Write-Host "`n=== Root Files ==="
-        Get-ChildItem | Format-Table Name, Length
+        Get-ChildItem | Format-Table Name
+        Write-Host "`n=== src/ Directory ==="
+        if (Test-Path "src") {
+          Get-ChildItem src | Format-Table Name
+        }
         Write-Host "`n=== Checking for main.py ==="
-        if (Test-Path "main.py") {
-          Write-Host "✓ Found main.py in root"
+        if (Test-Path "src/main.py") {
+          Write-Host "✓ Found src/main.py"
         } else {
-          Write-Host "✗ main.py NOT in root"
-          Write-Host "`nSearching for main.py..."
-          Get-ChildItem -Recurse -Filter "main.py" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Found at: $($_.FullName)" }
+          Write-Host "✗ src/main.py NOT found"
         }
     
     - name: Set up Python
@@ -53,26 +55,40 @@ jobs:
       shell: pwsh
       run: |
         Write-Host "Checking required files..."
-        $files = @("main.py", "config.py", "requirements.txt", "uploadericon.png", "version_info.txt")
-        foreach ($file in $files) {
+        $files = @{
+          "src/main.py" = "Main application"
+          "src/config.py" = "Configuration"
+          "src/dropbox_uploader.py" = "Dropbox uploader"
+          "src/webhook_client.py" = "Webhook client"
+          "src/utils.py" = "Utilities"
+          "requirements.txt" = "Dependencies"
+          "uploadericon.png" = "App icon"
+          "version_info.txt" = "Version metadata"
+        }
+        
+        foreach ($file in $files.Keys) {
           if (Test-Path $file) {
-            Write-Host "✓ $file"
+            Write-Host "✓ $($files[$file]): $file"
           } else {
-            Write-Host "✗ $file MISSING"
+            Write-Host "✗ $($files[$file]): $file MISSING"
           }
         }
     
     - name: Build Windows executable
       shell: pwsh
       run: |
-        if (-not (Test-Path "main.py")) {
-          Write-Host "ERROR: main.py not found in current directory!"
-          Write-Host "Current location: $(Get-Location)"
+        if (-not (Test-Path "src/main.py")) {
+          Write-Host "ERROR: src/main.py not found!"
           exit 1
         }
         
+        # Build from src/main.py
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" `
           --icon=uploadericon.png `
+          --add-data "src/config.py;." `
+          --add-data "src/dropbox_uploader.py;." `
+          --add-data "src/webhook_client.py;." `
+          --add-data "src/utils.py;." `
           --hidden-import=tkinter `
           --hidden-import=cryptography `
           --hidden-import=cryptography.fernet `
@@ -85,7 +101,7 @@ jobs:
           --exclude-module=pip `
           --noupx `
           --version-file=version_info.txt `
-          main.py
+          src/main.py
     
     - name: Verify build output
       shell: pwsh
@@ -96,6 +112,12 @@ jobs:
           Write-Host "Size: $([math]::Round($size, 2)) MB"
         } else {
           Write-Host "✗ Build failed - exe not found"
+          Write-Host "`nChecking dist folder:"
+          if (Test-Path "dist") {
+            Get-ChildItem dist
+          } else {
+            Write-Host "dist/ folder doesn't exist"
+          }
           exit 1
         }
     
@@ -169,20 +191,22 @@ jobs:
     
     - name: Debug - List repository contents
       run: |
-        echo "=== Current Directory ==="
+        echo "=== Repository Structure ==="
         pwd
         echo ""
         echo "=== Root Files ==="
         ls -la
         echo ""
+        echo "=== src/ Directory ==="
+        if [ -d "src" ]; then
+          ls -la src/
+        fi
+        echo ""
         echo "=== Checking for main.py ==="
-        if [ -f "main.py" ]; then
-          echo "✓ Found main.py in root"
+        if [ -f "src/main.py" ]; then
+          echo "✓ Found src/main.py"
         else
-          echo "✗ main.py NOT in root"
-          echo ""
-          echo "Searching for main.py..."
-          find . -name "main.py" -type f 2>/dev/null || echo "Not found anywhere"
+          echo "✗ src/main.py NOT found"
         fi
     
     - name: Set up Python
@@ -204,7 +228,8 @@ jobs:
     - name: Verify files before build
       run: |
         echo "Checking required files..."
-        for file in main.py config.py requirements.txt uploadericon.png; do
+        files="src/main.py src/config.py src/dropbox_uploader.py src/webhook_client.py src/utils.py requirements.txt uploadericon.png"
+        for file in $files; do
           if [ -f "$file" ]; then
             echo "✓ $file"
           else
@@ -214,14 +239,18 @@ jobs:
     
     - name: Build macOS application
       run: |
-        if [ ! -f "main.py" ]; then
-          echo "ERROR: main.py not found in current directory!"
-          echo "Current location: $(pwd)"
+        if [ ! -f "src/main.py" ]; then
+          echo "ERROR: src/main.py not found!"
           exit 1
         fi
         
+        # Build from src/main.py
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" \
           --icon=uploadericon.png \
+          --add-data "src/config.py:." \
+          --add-data "src/dropbox_uploader.py:." \
+          --add-data "src/webhook_client.py:." \
+          --add-data "src/utils.py:." \
           --hidden-import=cryptography \
           --hidden-import=cryptography.fernet \
           --hidden-import=dropbox \
@@ -232,7 +261,7 @@ jobs:
           --exclude-module=setuptools \
           --exclude-module=pip \
           --osx-bundle-identifier "com.snapflow.app" \
-          main.py
+          src/main.py
     
     - name: Verify build output
       run: |
@@ -241,6 +270,13 @@ jobs:
           du -sh "dist/${{ env.APP_NAME }}.app"
         else
           echo "✗ Build failed - .app not found"
+          echo ""
+          echo "Checking dist folder:"
+          if [ -d "dist" ]; then
+            ls -la dist/
+          else
+            echo "dist/ folder doesn't exist"
+          fi
           exit 1
         fi
     
@@ -252,13 +288,13 @@ jobs:
       run: |
         echo "Creating DMG installer..."
         
-        # Try fancy DMG with background first
-        if [ -f "_dmgbackground.png" ]; then
+        # Check for background image (note: your file is .dmg-background.png)
+        if [ -f ".dmg-background.png" ]; then
           echo "Found background image, creating fancy DMG..."
           create-dmg \
             --volname "SnapFlow" \
             --volicon "uploadericon.png" \
-            --background "_dmgbackground.png" \
+            --background ".dmg-background.png" \
             --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
@@ -283,7 +319,7 @@ jobs:
               echo "✓ Simple DMG created"
             }
         else
-          echo "No background image, creating simple DMG..."
+          echo "No background image (.dmg-background.png), creating simple DMG..."
           mkdir -p dist/dmg_temp
           cp -R "dist/${{ env.APP_NAME }}.app" dist/dmg_temp/
           ln -s /Applications dist/dmg_temp/Applications
@@ -343,11 +379,6 @@ jobs:
         - **Verification**: Check SHA256 hash matches above
         - Right-click → Open to bypass the warning
         
-        ## Future: Code Signing
-        We're working on getting an Apple Developer certificate
-        to eliminate security warnings. This requires a $99/year
-        Apple Developer Program membership.
-        
         See README for full instructions.
         EOF
     
@@ -397,47 +428,26 @@ jobs:
         ### 🪟 Windows Installation
         
         1. Download `SnapFlow.exe`
-        2. Download `SnapFlow.exe.sha256` (optional - for verification)
-        3. Right-click exe → Properties → Check "Unblock" if present
-        4. Run the application
+        2. Right-click → Properties → Check "Unblock"
+        3. Run the application
         
-        **⚠️ Antivirus Warning?**
-        - This is a FALSE POSITIVE (common with PyInstaller)
-        - Click "More info" → "Run anyway" in Windows Defender
-        - Or verify the SHA256 hash matches the .sha256 file
-        - Source code is fully available on GitHub for inspection
+        **⚠️ Antivirus Warning?** This is a false positive - click "More info" → "Run anyway"
         
         ### 🍎 macOS Installation
         
         1. Download `SnapFlow.dmg`
-        2. Download `SnapFlow.dmg.sha256` (optional - for verification)
-        3. Open the DMG file
-        4. Drag SnapFlow.app to Applications
-        5. **First run**: Right-click → Open (bypasses Gatekeeper)
+        2. Open DMG and drag to Applications
+        3. **First run**: Right-click → Open
         
-        **⚠️ Gatekeeper Warning?**
-        - App is not code-signed yet (requires $99/year Apple Developer Program)
-        - Right-click → Open on first launch
-        - Or verify SHA256 hash
-        - Source code available for inspection
+        ### 🔐 Security
         
-        ### 🔐 Security Notes
-        
-        - All builds are reproducible from source
         - SHA256 hashes provided for verification
-        - Antivirus warnings are false positives
-        - We're working on code signing certificates
-        
-        ### 📚 Documentation
-        
-        See the README for:
-        - Full setup instructions
-        - Configuration guide
-        - Troubleshooting
+        - Source code available on GitHub
+        - Not code-signed yet (working on it!)
         
         ---
         
-        **Need help?** Open an issue on GitHub or check the documentation.
+        **Need help?** Open an issue or check the documentation.
         EOF
     
     - name: Update Release
