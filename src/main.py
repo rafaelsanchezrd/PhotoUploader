@@ -216,12 +216,20 @@ class PhotoUploaderApp:
         self.market_combo.bind('<<ComboboxSelected>>', self._on_market_changed)
         
         # RIGHT COLUMN: PHOTOS (60%)
-        folder_frame = ttk.LabelFrame(top_row_frame, text="Select Photos", padding=15)
+        folder_frame = ttk.LabelFrame(top_row_frame, text="Select Photos/Videos", padding=15)
         folder_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         
-        self.select_folder_btn = ttk.Button(folder_frame, text="📁 Select Folder", 
+        # Button container for folder and file selection
+        button_container = ttk.Frame(folder_frame)
+        button_container.pack(pady=(0, 10))
+        
+        self.select_folder_btn = ttk.Button(button_container, text="📁 Select Folder", 
                                            command=self._select_folder)
-        self.select_folder_btn.pack(pady=(0, 10))
+        self.select_folder_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.select_files_btn = ttk.Button(button_container, text="📄 Select Files", 
+                                          command=self._select_files)
+        self.select_files_btn.pack(side=tk.LEFT)
         
         self.folder_label = ttk.Label(folder_frame, text="No folder selected", 
                                      font=('Arial', 9), foreground='gray')
@@ -423,7 +431,77 @@ class PhotoUploaderApp:
                                         foreground='red')
             messagebox.showerror("Validation Failed", error_msg)
     
-    def _select_folder(self):
+    def _select_files(self):
+        """Select individual files instead of a folder."""
+        from config import ALLOWED_EXTENSIONS
+        
+        # Create file type filters
+        photo_exts = ['.jpg', '.jpeg', '.png', '.tif', '.tiff', '.cr2', '.cr3', '.nef', '.arw', '.dng']
+        video_exts = ['.mp4', '.mov', '.avi', '.mkv', '.mts', '.m2ts', '.m4v']
+        
+        files = filedialog.askopenfilenames(
+            title="Select Photos/Videos",
+            filetypes=[
+                ("All Media", " ".join(f"*{ext}" for ext in ALLOWED_EXTENSIONS)),
+                ("Photos", " ".join(f"*{ext}" for ext in photo_exts)),
+                ("Videos", " ".join(f"*{ext}" for ext in video_exts)),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if not files:
+            return  # User cancelled
+        
+        # Validate and collect files
+        self.files_to_upload = []
+        self.total_size_bytes = 0
+        skipped = 0
+        
+        for file_path in files:
+            file_ext = Path(file_path).suffix.lower()
+            
+            if file_ext in ALLOWED_EXTENSIONS:
+                file_size = os.path.getsize(file_path)
+                
+                # Skip suspiciously small files (< 100KB)
+                if file_size > 100 * 1024:
+                    self.files_to_upload.append(file_path)
+                    self.total_size_bytes += file_size
+                else:
+                    skipped += 1
+                    logger.warning(f"Skipping small file: {os.path.basename(file_path)} ({file_size} bytes)")
+            else:
+                skipped += 1
+                logger.warning(f"Skipping unsupported file type: {file_path}")
+        
+        if not self.files_to_upload:
+            messagebox.showwarning("No Valid Files", 
+                                 "No valid photo or video files were selected.\n\n"
+                                 "Supported formats: Photos (JPG, PNG, RAW) and Videos (MP4, MOV, etc)")
+            return
+        
+        # Update UI
+        file_count = len(self.files_to_upload)
+        self.selected_folder = "Multiple Files"  # Mark as file selection
+        
+        self.folder_label.config(
+            text=f"✓ {file_count} file{'s' if file_count != 1 else ''} selected",
+            foreground='black'
+        )
+        
+        info_text = f"{format_bytes(self.total_size_bytes)} total"
+        if skipped > 0:
+            info_text += f" • {skipped} file{'s' if skipped != 1 else ''} skipped"
+        
+        self.file_info_label.config(text=info_text)
+        
+        # Enable validation if market is selected
+        if self.selected_market.get():
+            self.validate_btn.config(state='normal')
+        
+        logger.info(f"Selected {file_count} files, total size: {format_bytes(self.total_size_bytes)}")
+        
+        def _select_folder(self):
         """Select folder containing photos."""
         folder_path = filedialog.askdirectory(title="Select Photo Folder")
         
