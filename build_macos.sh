@@ -20,24 +20,67 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "[2/6] Installing PyInstaller..."
-pip3 install pyinstaller
+echo "[2/6] Installing PyInstaller and Pillow..."
+pip3 install pyinstaller Pillow
 if [ $? -ne 0 ]; then
     echo "ERROR: Failed to install PyInstaller"
     exit 1
 fi
 
 echo ""
-echo "[3/6] Cleaning previous builds..."
+echo "[3/6] Converting icon to ICNS format..."
+if [ ! -f "uploadericon.icns" ]; then
+    echo "Converting uploadericon.png to uploadericon.icns..."
+    python3 << 'EOF'
+from PIL import Image
+import os
+
+# Open PNG
+img = Image.open('uploadericon.png')
+
+# Create iconset directory
+iconset_dir = 'uploadericon.iconset'
+os.makedirs(iconset_dir, exist_ok=True)
+
+# Generate required icon sizes for macOS
+sizes = [16, 32, 128, 256, 512]
+for size in sizes:
+    # Standard resolution
+    img_resized = img.resize((size, size), Image.Resampling.LANCZOS)
+    img_resized.save(f'{iconset_dir}/icon_{size}x{size}.png')
+    
+    # Retina (@2x) resolution
+    size_2x = size * 2
+    img_resized_2x = img.resize((size_2x, size_2x), Image.Resampling.LANCZOS)
+    img_resized_2x.save(f'{iconset_dir}/icon_{size}x{size}@2x.png')
+
+print("✓ Icon sizes generated")
+EOF
+    
+    # Convert iconset to icns using macOS tool
+    iconutil -c icns uploadericon.iconset
+    rm -rf uploadericon.iconset
+    
+    if [ -f "uploadericon.icns" ]; then
+        echo "✓ Successfully created uploadericon.icns"
+    else
+        echo "WARNING: Could not create .icns file, build will continue without icon"
+    fi
+else
+    echo "✓ uploadericon.icns already exists"
+fi
+
+echo ""
+echo "[4/6] Cleaning previous builds..."
 rm -rf build dist *.spec
 
 echo ""
-echo "[4/6] Building application with optimized settings..."
+echo "[5/6] Building application with optimized settings..."
 pyinstaller --clean \
     --onefile \
     --windowed \
     --name "SnapFlow" \
-    --icon=uploadericon.png \
+    --icon=uploadericon.icns \
     --add-data "src/config.py:." \
     --add-data "src/dropbox_uploader.py:." \
     --add-data "src/webhook_client.py:." \
@@ -60,11 +103,11 @@ if [ $? -ne 0 ]; then
 fi
 
 echo ""
-echo "[5/6] Setting permissions..."
+echo "[6/6] Setting permissions..."
 chmod +x "dist/SnapFlow.app/Contents/MacOS/SnapFlow"
 
 echo ""
-echo "[6/6] Creating DMG installer..."
+echo "[7/7] Creating DMG installer..."
 
 # Check if create-dmg is installed
 if command -v create-dmg &> /dev/null; then

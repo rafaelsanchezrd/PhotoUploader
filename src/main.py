@@ -1,5 +1,5 @@
 """
-Photographer Photo Uploader - FINAL VERSION
+Photographer SnapFlow - FINAL VERSION
 Features:
 - Two-column layout (Market + Photos)
 - Content type selection (Daytime/Twilight/Video)
@@ -191,7 +191,7 @@ class PhotoUploaderApp:
         header_frame = ttk.Frame(self.root, padding=15)
         header_frame.pack(fill=tk.X)
         
-        ttk.Label(header_frame, text="📸 Photo Uploader", 
+        ttk.Label(header_frame, text="📸 SnapFlow", 
                  font=('Arial', 16, 'bold')).pack()
         
         self.photographer_label = ttk.Label(header_frame, text="Loading...", 

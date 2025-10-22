@@ -16,11 +16,11 @@ env:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Debug - List repository contents
       shell: pwsh
       run: |
@@ -38,20 +38,20 @@ jobs:
         } else {
           Write-Host "✗ src/main.py NOT found"
         }
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
         pip install Pillow
-    
+
     - name: Convert PNG icon to ICO
       shell: pwsh
       run: |
@@ -67,7 +67,7 @@ jobs:
             exit 1
           }
         }
-    
+
     - name: Verify files before build
       shell: pwsh
       run: |
@@ -82,7 +82,7 @@ jobs:
           "uploadericon.png" = "App icon"
           "version_info.txt" = "Version metadata"
         }
-        
+
         foreach ($file in $files.Keys) {
           if (Test-Path $file) {
             Write-Host "✓ $($files[$file]): $file"
@@ -90,7 +90,7 @@ jobs:
             Write-Host "✗ $($files[$file]): $file MISSING"
           }
         }
-    
+
     - name: Build Windows executable
       shell: pwsh
       run: |
@@ -98,7 +98,7 @@ jobs:
           Write-Host "ERROR: src/main.py not found!"
           exit 1
         }
-        
+
         # Build from src/main.py
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" `
           --icon=uploadericon.ico `
@@ -119,7 +119,7 @@ jobs:
           --noupx `
           --version-file=version_info.txt `
           src/main.py
-    
+
     - name: Verify build output
       shell: pwsh
       run: |
@@ -137,7 +137,7 @@ jobs:
           }
           exit 1
         }
-    
+
     - name: Calculate SHA256 hash
       shell: pwsh
       run: |
@@ -145,40 +145,40 @@ jobs:
         $hash | Out-File "dist\${{ env.APP_NAME }}.exe.sha256" -Encoding ASCII
         Write-Host "SHA256: $hash"
         Write-Host "WINDOWS_SHA256=$hash" >> $env:GITHUB_ENV
-    
+
     - name: Create distribution info
       shell: pwsh
       run: |
         @"
         # SnapFlow - Windows Build
-        
+
         **Version**: ${{ github.ref_name }}
         **Built**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
         **Commit**: ${{ github.sha }}
-        
+
         ## Files
         - SnapFlow.exe
         - SnapFlow.exe.sha256
-        
+
         ## SHA256 Hash
         ``````
         $env:WINDOWS_SHA256
         ``````
-        
+
         ## Installation
         1. Download SnapFlow.exe
         2. Right-click → Properties → Check "Unblock" if present
         3. Run the executable
-        
+
         ## Antivirus Warning?
         This is a FALSE POSITIVE (common with PyInstaller apps).
         - Click "More info" → "Run anyway" in Windows Defender
         - Or check SHA256 hash matches above
         - Source code is available for verification
-        
+
         See README for full instructions.
         "@ | Out-File "dist\README-Windows.md" -Encoding UTF8
-    
+
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
       with:
@@ -188,7 +188,7 @@ jobs:
           dist/${{ env.APP_NAME }}.exe.sha256
           dist/README-Windows.md
         retention-days: 90
-    
+
     - name: Upload to Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v1
@@ -201,11 +201,11 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Debug - List repository contents
       run: |
         echo "=== Repository Structure ==="
@@ -225,27 +225,72 @@ jobs:
         else
           echo "✗ src/main.py NOT found"
         fi
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
-    
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller
-    
+        pip install Pillow
+
+    - name: Convert PNG icon to ICNS
+      run: |
+        if [ -f "uploadericon.icns" ]; then
+          echo "✓ uploadericon.icns already exists"
+        else
+          echo "Converting uploadericon.png to uploadericon.icns..."
+          python3 << 'PYEOF'
+        from PIL import Image
+        import os
+
+        # Open PNG
+        img = Image.open('uploadericon.png')
+
+        # Create iconset directory
+        iconset_dir = 'uploadericon.iconset'
+        os.makedirs(iconset_dir, exist_ok=True)
+
+        # Generate required icon sizes for macOS
+        sizes = [16, 32, 128, 256, 512]
+        for size in sizes:
+            # Standard resolution
+            img_resized = img.resize((size, size), Image.Resampling.LANCZOS)
+            img_resized.save(f'{iconset_dir}/icon_{size}x{size}.png')
+
+            # Retina (@2x) resolution
+            size_2x = size * 2
+            img_resized_2x = img.resize((size_2x, size_2x), Image.Resampling.LANCZOS)
+            img_resized_2x.save(f'{iconset_dir}/icon_{size}x{size}@2x.png')
+
+        print("✓ Icon sizes generated")
+        PYEOF
+
+          # Convert iconset to icns using macOS tool
+          iconutil -c icns uploadericon.iconset
+          rm -rf uploadericon.iconset
+
+          if [ -f "uploadericon.icns" ]; then
+            echo "✓ Successfully created uploadericon.icns"
+          else
+            echo "✗ Failed to create .icns file"
+            exit 1
+          fi
+        fi
+
     - name: Install create-dmg
       run: |
         brew install create-dmg
-    
+
     - name: Verify files before build
       run: |
         echo "Checking required files..."
-        files="src/main.py src/config.py src/dropbox_uploader.py src/webhook_client.py src/utils.py requirements.txt uploadericon.png"
+        files="src/main.py src/config.py src/dropbox_uploader.py src/webhook_client.py src/utils.py requirements.txt uploadericon.icns"
         for file in $files; do
           if [ -f "$file" ]; then
             echo "✓ $file"
@@ -253,17 +298,17 @@ jobs:
             echo "✗ $file MISSING"
           fi
         done
-    
+
     - name: Build macOS application
       run: |
         if [ ! -f "src/main.py" ]; then
           echo "ERROR: src/main.py not found!"
           exit 1
         fi
-        
+
         # Build from src/main.py
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" \
-          --icon=uploadericon.png \
+          --icon=uploadericon.icns \
           --add-data "src/config.py:." \
           --add-data "src/dropbox_uploader.py:." \
           --add-data "src/webhook_client.py:." \
@@ -279,7 +324,7 @@ jobs:
           --exclude-module=pip \
           --osx-bundle-identifier "com.snapflow.app" \
           src/main.py
-    
+
     - name: Verify build output
       run: |
         if [ -d "dist/${{ env.APP_NAME }}.app" ]; then
@@ -296,15 +341,15 @@ jobs:
           fi
           exit 1
         fi
-    
+
     - name: Set permissions
       run: |
         chmod +x "dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}"
-    
+
     - name: Create DMG
       run: |
         echo "Creating DMG installer..."
-        
+
         # Check for background image (note: your file is .dmg-background.png)
         if [ -f ".dmg-background.png" ]; then
           echo "Found background image, creating fancy DMG..."
@@ -347,7 +392,7 @@ jobs:
           rm -rf dist/dmg_temp
           echo "✓ Simple DMG created"
         fi
-    
+
     - name: Verify DMG
       run: |
         if [ -f "dist/${{ env.APP_NAME }}.dmg" ]; then
@@ -357,48 +402,48 @@ jobs:
           echo "✗ DMG creation failed"
           exit 1
         fi
-    
+
     - name: Calculate SHA256 hash
       run: |
         cd dist
         shasum -a 256 "${{ env.APP_NAME }}.dmg" > "${{ env.APP_NAME }}.dmg.sha256"
         cat "${{ env.APP_NAME }}.dmg.sha256"
         echo "MACOS_SHA256=$(cat ${{ env.APP_NAME }}.dmg.sha256 | awk '{print $1}')" >> $GITHUB_ENV
-    
+
     - name: Create distribution info
       run: |
         cat > "dist/README-macOS.md" << 'EOF'
         # SnapFlow - macOS Build
-        
+
         **Version**: ${{ github.ref_name }}
         **Built**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
         **Commit**: ${{ github.sha }}
-        
+
         ## Files
         - SnapFlow.dmg (DMG installer)
         - SnapFlow.dmg.sha256 (verification hash)
-        
+
         ## SHA256 Hash
         ```
         ${{ env.MACOS_SHA256 }}
         ```
-        
+
         ## Installation
         1. Download SnapFlow.dmg
         2. Open the DMG file
         3. Drag SnapFlow.app to Applications folder
         4. **First run only**: Right-click → Open (bypasses Gatekeeper)
         5. Click "Open" in the security dialog
-        
+
         ## Gatekeeper Warning?
         This app is NOT code-signed yet (working on it!).
         - **Safe to use**: Source code is fully available
         - **Verification**: Check SHA256 hash matches above
         - Right-click → Open to bypass the warning
-        
+
         See README for full instructions.
         EOF
-    
+
     - name: Upload macOS artifact
       uses: actions/upload-artifact@v4
       with:
@@ -408,7 +453,7 @@ jobs:
           dist/${{ env.APP_NAME }}.dmg.sha256
           dist/README-macOS.md
         retention-days: 90
-    
+
     - name: Upload to Release
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v1
@@ -423,50 +468,50 @@ jobs:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Create Release Notes
       run: |
         cat > RELEASE_NOTES.md << 'EOF'
         ## 📸 SnapFlow ${{ github.ref_name }}
-        
+
         Desktop application for photographers to upload photos to Dropbox via Make.com workflow.
-        
+
         ### 📦 Downloads
-        
+
         | Platform | File | SHA256 |
         |----------|------|--------|
         | Windows | SnapFlow.exe | See .sha256 file |
         | macOS | SnapFlow.dmg | See .sha256 file |
-        
+
         ### 🪟 Windows Installation
-        
+
         1. Download `SnapFlow.exe`
         2. Right-click → Properties → Check "Unblock"
         3. Run the application
-        
+
         **⚠️ Antivirus Warning?** This is a false positive - click "More info" → "Run anyway"
-        
+
         ### 🍎 macOS Installation
-        
+
         1. Download `SnapFlow.dmg`
         2. Open DMG and drag to Applications
         3. **First run**: Right-click → Open
-        
+
         ### 🔐 Security
-        
+
         - SHA256 hashes provided for verification
         - Source code available on GitHub
         - Not code-signed yet (working on it!)
-        
+
         ---
-        
+
         **Need help?** Open an issue or check the documentation.
         EOF
-    
+
     - name: Update Release
       uses: softprops/action-gh-release@v1
       with:
