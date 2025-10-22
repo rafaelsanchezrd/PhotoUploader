@@ -104,7 +104,7 @@ def extract_site_id_from_folder(folder_name: str) -> str:
       - "408-N-13" -> "408N13"
     """
     import re
-    # Remove common separators and extract alphanumeric
+    # Remove common separators and extract alphanumeric characters
     cleaned = re.sub(r'[^a-zA-Z0-9]', '', folder_name)
     return cleaned.upper()
 
