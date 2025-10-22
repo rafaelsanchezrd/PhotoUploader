@@ -1,4 +1,4 @@
-name: Build Photo Uploader
+name: Build SnapFlow
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
       - 'v*.*.*'
   pull_request:
     branches: [ main, master ]
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:
 
 env:
   PYTHON_VERSION: '3.11'
@@ -21,6 +21,22 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Debug - List repository contents
+      shell: pwsh
+      run: |
+        Write-Host "=== Current Directory ==="
+        Get-Location
+        Write-Host "`n=== Root Files ==="
+        Get-ChildItem | Format-Table Name, Length
+        Write-Host "`n=== Checking for main.py ==="
+        if (Test-Path "main.py") {
+          Write-Host "✓ Found main.py in root"
+        } else {
+          Write-Host "✗ main.py NOT in root"
+          Write-Host "`nSearching for main.py..."
+          Get-ChildItem -Recurse -Filter "main.py" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "Found at: $($_.FullName)" }
+        }
+    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -33,8 +49,28 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
-    - name: Build Windows executable
+    - name: Verify files before build
+      shell: pwsh
       run: |
+        Write-Host "Checking required files..."
+        $files = @("main.py", "config.py", "requirements.txt", "uploadericon.png", "version_info.txt")
+        foreach ($file in $files) {
+          if (Test-Path $file) {
+            Write-Host "✓ $file"
+          } else {
+            Write-Host "✗ $file MISSING"
+          }
+        }
+    
+    - name: Build Windows executable
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "main.py")) {
+          Write-Host "ERROR: main.py not found in current directory!"
+          Write-Host "Current location: $(Get-Location)"
+          exit 1
+        }
+        
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" `
           --icon=uploadericon.png `
           --hidden-import=tkinter `
@@ -50,6 +86,18 @@ jobs:
           --noupx `
           --version-file=version_info.txt `
           main.py
+    
+    - name: Verify build output
+      shell: pwsh
+      run: |
+        if (Test-Path "dist/${{ env.APP_NAME }}.exe") {
+          Write-Host "✓ Build successful: dist/${{ env.APP_NAME }}.exe"
+          $size = (Get-Item "dist/${{ env.APP_NAME }}.exe").Length / 1MB
+          Write-Host "Size: $([math]::Round($size, 2)) MB"
+        } else {
+          Write-Host "✗ Build failed - exe not found"
+          exit 1
+        }
     
     - name: Calculate SHA256 hash
       shell: pwsh
@@ -119,6 +167,24 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
     
+    - name: Debug - List repository contents
+      run: |
+        echo "=== Current Directory ==="
+        pwd
+        echo ""
+        echo "=== Root Files ==="
+        ls -la
+        echo ""
+        echo "=== Checking for main.py ==="
+        if [ -f "main.py" ]; then
+          echo "✓ Found main.py in root"
+        else
+          echo "✗ main.py NOT in root"
+          echo ""
+          echo "Searching for main.py..."
+          find . -name "main.py" -type f 2>/dev/null || echo "Not found anywhere"
+        fi
+    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -135,8 +201,25 @@ jobs:
       run: |
         brew install create-dmg
     
+    - name: Verify files before build
+      run: |
+        echo "Checking required files..."
+        for file in main.py config.py requirements.txt uploadericon.png; do
+          if [ -f "$file" ]; then
+            echo "✓ $file"
+          else
+            echo "✗ $file MISSING"
+          fi
+        done
+    
     - name: Build macOS application
       run: |
+        if [ ! -f "main.py" ]; then
+          echo "ERROR: main.py not found in current directory!"
+          echo "Current location: $(pwd)"
+          exit 1
+        fi
+        
         pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" \
           --icon=uploadericon.png \
           --hidden-import=cryptography \
@@ -151,38 +234,76 @@ jobs:
           --osx-bundle-identifier "com.snapflow.app" \
           main.py
     
+    - name: Verify build output
+      run: |
+        if [ -d "dist/${{ env.APP_NAME }}.app" ]; then
+          echo "✓ Build successful: dist/${{ env.APP_NAME }}.app"
+          du -sh "dist/${{ env.APP_NAME }}.app"
+        else
+          echo "✗ Build failed - .app not found"
+          exit 1
+        fi
+    
     - name: Set permissions
       run: |
         chmod +x "dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}"
     
     - name: Create DMG
       run: |
-        # Create DMG with custom background and layout
-        create-dmg \
-          --volname "SnapFlow" \
-          --volicon "uploadericon.png" \
-          --background "_dmgbackground.png" \
-          --window-pos 200 120 \
-          --window-size 600 400 \
-          --icon-size 100 \
-          --icon "${{ env.APP_NAME }}.app" 175 190 \
-          --hide-extension "${{ env.APP_NAME }}.app" \
-          --app-drop-link 425 190 \
-          --format UDZO \
-          "dist/${{ env.APP_NAME }}.dmg" \
-          "dist/${{ env.APP_NAME }}.app" \
-          || {
-            echo "create-dmg failed, trying fallback method..."
-            # Fallback: simple DMG
-            mkdir -p dist/dmg_temp
-            cp -R "dist/${{ env.APP_NAME }}.app" dist/dmg_temp/
-            ln -s /Applications dist/dmg_temp/Applications
-            hdiutil create -volname "SnapFlow" \
-              -srcfolder dist/dmg_temp \
-              -ov -format UDZO \
-              "dist/${{ env.APP_NAME }}.dmg"
-            rm -rf dist/dmg_temp
-          }
+        echo "Creating DMG installer..."
+        
+        # Try fancy DMG with background first
+        if [ -f "_dmgbackground.png" ]; then
+          echo "Found background image, creating fancy DMG..."
+          create-dmg \
+            --volname "SnapFlow" \
+            --volicon "uploadericon.png" \
+            --background "_dmgbackground.png" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "${{ env.APP_NAME }}.app" 175 190 \
+            --hide-extension "${{ env.APP_NAME }}.app" \
+            --app-drop-link 425 190 \
+            --format UDZO \
+            "dist/${{ env.APP_NAME }}.dmg" \
+            "dist/${{ env.APP_NAME }}.app" \
+            && echo "✓ Fancy DMG created" \
+            || {
+              echo "⚠ Fancy DMG failed, trying simple DMG..."
+              rm -f "dist/${{ env.APP_NAME }}.dmg"
+              mkdir -p dist/dmg_temp
+              cp -R "dist/${{ env.APP_NAME }}.app" dist/dmg_temp/
+              ln -s /Applications dist/dmg_temp/Applications
+              hdiutil create -volname "SnapFlow" \
+                -srcfolder dist/dmg_temp \
+                -ov -format UDZO \
+                "dist/${{ env.APP_NAME }}.dmg"
+              rm -rf dist/dmg_temp
+              echo "✓ Simple DMG created"
+            }
+        else
+          echo "No background image, creating simple DMG..."
+          mkdir -p dist/dmg_temp
+          cp -R "dist/${{ env.APP_NAME }}.app" dist/dmg_temp/
+          ln -s /Applications dist/dmg_temp/Applications
+          hdiutil create -volname "SnapFlow" \
+            -srcfolder dist/dmg_temp \
+            -ov -format UDZO \
+            "dist/${{ env.APP_NAME }}.dmg"
+          rm -rf dist/dmg_temp
+          echo "✓ Simple DMG created"
+        fi
+    
+    - name: Verify DMG
+      run: |
+        if [ -f "dist/${{ env.APP_NAME }}.dmg" ]; then
+          echo "✓ DMG created successfully"
+          ls -lh "dist/${{ env.APP_NAME }}.dmg"
+        else
+          echo "✗ DMG creation failed"
+          exit 1
+        fi
     
     - name: Calculate SHA256 hash
       run: |
@@ -250,7 +371,7 @@ jobs:
           dist/README-macOS.md
         fail_on_unmatched_files: false
 
-  create-release:
+  create-release-notes:
     needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
@@ -258,14 +379,6 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-    
-    - name: Display structure
-      run: ls -R artifacts
     
     - name: Create Release Notes
       run: |
@@ -276,10 +389,10 @@ jobs:
         
         ### 📦 Downloads
         
-        | Platform | File | Size | SHA256 |
-        |----------|------|------|--------|
-        | Windows | SnapFlow.exe | See below | See .sha256 file |
-        | macOS | SnapFlow.dmg | See below | See .sha256 file |
+        | Platform | File | SHA256 |
+        |----------|------|--------|
+        | Windows | SnapFlow.exe | See .sha256 file |
+        | macOS | SnapFlow.dmg | See .sha256 file |
         
         ### 🪟 Windows Installation
         
@@ -317,20 +430,10 @@ jobs:
         
         ### 📚 Documentation
         
-        See the [README](README.md) for:
+        See the README for:
         - Full setup instructions
         - Configuration guide
         - Troubleshooting
-        - API documentation
-        
-        ### 🐛 Known Issues
-        
-        - First-run security warnings (normal for unsigned apps)
-        - Some antivirus software may quarantine (false positive)
-        
-        ### 📝 Changelog
-        
-        See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
         
         ---
         
