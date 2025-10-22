@@ -1,335 +1,344 @@
-name: Build Cross-Platform Application
+name: Build Photo Uploader
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:
+    branches: [ main, master, develop ]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  PYTHON_VERSION: '3.11'
+  APP_NAME: SnapFlow
 
 jobs:
-  # ---------------- WINDOWS BUILD ----------------
   build-windows:
     runs-on: windows-latest
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      - name: Build Windows executable
-        run: pyinstaller --onefile --windowed --noconfirm --name PhotoUploader src/main.py
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-Windows
-          path: dist/PhotoUploader.exe
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Windows executable
+      run: |
+        pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" `
+          --icon=uploadericon.png `
+          --hidden-import=tkinter `
+          --hidden-import=cryptography `
+          --hidden-import=cryptography.fernet `
+          --hidden-import=dropbox `
+          --hidden-import=requests `
+          --hidden-import=urllib3 `
+          --hidden-import=certifi `
+          --exclude-module=pytest `
+          --exclude-module=setuptools `
+          --exclude-module=pip `
+          --noupx `
+          --version-file=version_info.txt `
+          main.py
+    
+    - name: Calculate SHA256 hash
+      shell: pwsh
+      run: |
+        $hash = (Get-FileHash "dist\${{ env.APP_NAME }}.exe" -Algorithm SHA256).Hash
+        $hash | Out-File "dist\${{ env.APP_NAME }}.exe.sha256" -Encoding ASCII
+        Write-Host "SHA256: $hash"
+        Write-Host "WINDOWS_SHA256=$hash" >> $env:GITHUB_ENV
+    
+    - name: Create distribution info
+      shell: pwsh
+      run: |
+        @"
+        # SnapFlow - Windows Build
+        
+        **Version**: ${{ github.ref_name }}
+        **Built**: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss UTC")
+        **Commit**: ${{ github.sha }}
+        
+        ## Files
+        - SnapFlow.exe
+        - SnapFlow.exe.sha256
+        
+        ## SHA256 Hash
+        ``````
+        $env:WINDOWS_SHA256
+        ``````
+        
+        ## Installation
+        1. Download SnapFlow.exe
+        2. Right-click → Properties → Check "Unblock" if present
+        3. Run the executable
+        
+        ## Antivirus Warning?
+        This is a FALSE POSITIVE (common with PyInstaller apps).
+        - Click "More info" → "Run anyway" in Windows Defender
+        - Or check SHA256 hash matches above
+        - Source code is available for verification
+        
+        See README for full instructions.
+        "@ | Out-File "dist\README-Windows.md" -Encoding UTF8
+    
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-Windows
+        path: |
+          dist/${{ env.APP_NAME }}.exe
+          dist/${{ env.APP_NAME }}.exe.sha256
+          dist/README-Windows.md
+        retention-days: 90
+    
+    - name: Upload to Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/${{ env.APP_NAME }}.exe
+          dist/${{ env.APP_NAME }}.exe.sha256
+          dist/README-Windows.md
+        fail_on_unmatched_files: false
 
-  # ---------------- LINUX BUILD ----------------
-  build-linux:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Install create-dmg
+      run: |
+        brew install create-dmg
+    
+    - name: Build macOS application
+      run: |
+        pyinstaller --clean --onefile --windowed --name "${{ env.APP_NAME }}" \
+          --icon=uploadericon.png \
+          --hidden-import=cryptography \
+          --hidden-import=cryptography.fernet \
+          --hidden-import=dropbox \
+          --hidden-import=requests \
+          --hidden-import=urllib3 \
+          --hidden-import=certifi \
+          --exclude-module=pytest \
+          --exclude-module=setuptools \
+          --exclude-module=pip \
+          --osx-bundle-identifier "com.snapflow.app" \
+          main.py
+    
+    - name: Set permissions
+      run: |
+        chmod +x "dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}"
+    
+    - name: Create DMG
+      run: |
+        # Create DMG with custom background and layout
+        create-dmg \
+          --volname "SnapFlow" \
+          --volicon "uploadericon.png" \
+          --background "_dmgbackground.png" \
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --icon "${{ env.APP_NAME }}.app" 175 190 \
+          --hide-extension "${{ env.APP_NAME }}.app" \
+          --app-drop-link 425 190 \
+          --format UDZO \
+          "dist/${{ env.APP_NAME }}.dmg" \
+          "dist/${{ env.APP_NAME }}.app" \
+          || {
+            echo "create-dmg failed, trying fallback method..."
+            # Fallback: simple DMG
+            mkdir -p dist/dmg_temp
+            cp -R "dist/${{ env.APP_NAME }}.app" dist/dmg_temp/
+            ln -s /Applications dist/dmg_temp/Applications
+            hdiutil create -volname "SnapFlow" \
+              -srcfolder dist/dmg_temp \
+              -ov -format UDZO \
+              "dist/${{ env.APP_NAME }}.dmg"
+            rm -rf dist/dmg_temp
+          }
+    
+    - name: Calculate SHA256 hash
+      run: |
+        cd dist
+        shasum -a 256 "${{ env.APP_NAME }}.dmg" > "${{ env.APP_NAME }}.dmg.sha256"
+        cat "${{ env.APP_NAME }}.dmg.sha256"
+        echo "MACOS_SHA256=$(cat ${{ env.APP_NAME }}.dmg.sha256 | awk '{print $1}')" >> $GITHUB_ENV
+    
+    - name: Create distribution info
+      run: |
+        cat > "dist/README-macOS.md" << 'EOF'
+        # SnapFlow - macOS Build
+        
+        **Version**: ${{ github.ref_name }}
+        **Built**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Commit**: ${{ github.sha }}
+        
+        ## Files
+        - SnapFlow.dmg (DMG installer)
+        - SnapFlow.dmg.sha256 (verification hash)
+        
+        ## SHA256 Hash
+        ```
+        ${{ env.MACOS_SHA256 }}
+        ```
+        
+        ## Installation
+        1. Download SnapFlow.dmg
+        2. Open the DMG file
+        3. Drag SnapFlow.app to Applications folder
+        4. **First run only**: Right-click → Open (bypasses Gatekeeper)
+        5. Click "Open" in the security dialog
+        
+        ## Gatekeeper Warning?
+        This app is NOT code-signed yet (working on it!).
+        - **Safe to use**: Source code is fully available
+        - **Verification**: Check SHA256 hash matches above
+        - Right-click → Open to bypass the warning
+        
+        ## Future: Code Signing
+        We're working on getting an Apple Developer certificate
+        to eliminate security warnings. This requires a $99/year
+        Apple Developer Program membership.
+        
+        See README for full instructions.
+        EOF
+    
+    - name: Upload macOS artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.APP_NAME }}-macOS
+        path: |
+          dist/${{ env.APP_NAME }}.dmg
+          dist/${{ env.APP_NAME }}.dmg.sha256
+          dist/README-macOS.md
+        retention-days: 90
+    
+    - name: Upload to Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/${{ env.APP_NAME }}.dmg
+          dist/${{ env.APP_NAME }}.dmg.sha256
+          dist/README-macOS.md
+        fail_on_unmatched_files: false
+
+  create-release:
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      - name: Build Linux executable
-        run: pyinstaller --onefile --windowed --noconfirm --name PhotoUploader src/main.py
-      - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-Linux
-          path: dist/PhotoUploader
-
-  # ---------------- macOS BUILD (Intel x86_64) ----------------
-  build-macos-intel:
-    runs-on: macos-13 # Intel-based runner
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python for x86_64
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: 'x64'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      
-      - name: Create PyInstaller spec file
-        run: |
-          cat > PhotoUploader.spec << 'EOF'
-          # -*- mode: python ; coding: utf-8 -*-
-
-          block_cipher = None
-
-          a = Analysis(
-              ['src/main.py'],
-              pathex=[],
-              binaries=[],
-              datas=[],
-              hiddenimports=['tkinter', 'tkinter.filedialog', 'tkinter.messagebox'],
-              hookspath=[],
-              hooksconfig={},
-              runtime_hooks=[],
-              excludes=[],
-              win_no_prefer_redirects=False,
-              win_private_assemblies=False,
-              cipher=block_cipher,
-              noarchive=False,
-          )
-
-          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-          exe = EXE(
-              pyz,
-              a.scripts,
-              [],
-              exclude_binaries=True,
-              name='PhotoUploader',
-              debug=False,
-              bootloader_ignore_signals=False,
-              strip=False,
-              upx=False,
-              console=False,
-              disable_windowed_traceback=False,
-              argv_emulation=False,
-              target_arch='x86_64',
-              codesign_identity=None,
-              entitlements_file=None,
-          )
-
-          coll = COLLECT(
-              exe,
-              a.binaries,
-              a.zipfiles,
-              a.datas,
-              strip=False,
-              upx=False,
-              upx_exclude=[],
-              name='PhotoUploader',
-          )
-
-          app = BUNDLE(
-              coll,
-              name='PhotoUploader.app',
-              icon=None,
-              bundle_identifier='com.yourcompany.photouploader',
-              version='1.0.0',
-              info_plist={
-                  'NSPrincipalClass': 'NSApplication',
-                  'NSHighResolutionCapable': 'True',
-                  'LSMinimumSystemVersion': '10.13.0',
-                  'NSRequiresAquaSystemAppearance': 'False',
-                  'NSAppleEventsUsageDescription': 'PhotoUploader needs to access files.',
-                  'NSSupportsAutomaticTermination': 'NO',
-                  'NSSupportsSuddenTermination': 'NO',
-                  'LSUIElement': '0',
-              },
-          )
-          EOF
-
-      - name: Build macOS app for Intel
-        run: |
-          pyinstaller PhotoUploader.spec --clean --noconfirm
-          
-          echo "--- Verifying architecture ---"
-          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          
-          echo "--- Checking app bundle structure ---"
-          ls -la dist/PhotoUploader.app/Contents/
-          ls -la dist/PhotoUploader.app/Contents/MacOS/
-          
-          echo "--- Setting permissions ---"
-          chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          
-          echo "--- Ad-hoc signing ---"
-          codesign --force --deep --sign - dist/PhotoUploader.app
-          codesign --verify --verbose dist/PhotoUploader.app
-          
-          echo "--- Removing quarantine attributes ---"
-          xattr -cr dist/PhotoUploader.app
-      
-      - name: Install create-dmg tool
-        run: brew install create-dmg
-      
-      - name: Create DMG for Intel
-        run: |
-          # Create a proper installer DMG with Applications folder link
-          create-dmg \
-            --volname "PhotoUploader" \
-            --volicon "dist/PhotoUploader.app/Contents/Resources/AppIcon.icns" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "PhotoUploader.app" 175 120 \
-            --hide-extension "PhotoUploader.app" \
-            --app-drop-link 425 120 \
-            --no-internet-enable \
-            "dist/PhotoUploader-macOS-Intel.dmg" \
-            "dist/PhotoUploader.app" \
-            || hdiutil create -volname "PhotoUploader Intel" \
-               -srcfolder "dist/PhotoUploader.app" \
-               -ov -format UDZO \
-               "dist/PhotoUploader-macOS-Intel.dmg"
-      
-      - name: Upload Intel macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-macOS-Intel
-          path: dist/PhotoUploader-macOS-Intel.dmg
-
-  # ---------------- macOS BUILD (Apple Silicon ARM64) ----------------
-  build-macos-apple-silicon:
-    runs-on: macos-14 # ARM-based (Apple Silicon) runner
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python for arm64
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          architecture: 'arm64'
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      
-      - name: Create PyInstaller spec file
-        run: |
-          cat > PhotoUploader.spec << 'EOF'
-          # -*- mode: python ; coding: utf-8 -*-
-
-          block_cipher = None
-
-          a = Analysis(
-              ['src/main.py'],
-              pathex=[],
-              binaries=[],
-              datas=[],
-              hiddenimports=['tkinter', 'tkinter.filedialog', 'tkinter.messagebox'],
-              hookspath=[],
-              hooksconfig={},
-              runtime_hooks=[],
-              excludes=[],
-              win_no_prefer_redirects=False,
-              win_private_assemblies=False,
-              cipher=block_cipher,
-              noarchive=False,
-          )
-
-          pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-          exe = EXE(
-              pyz,
-              a.scripts,
-              [],
-              exclude_binaries=True,
-              name='PhotoUploader',
-              debug=False,
-              bootloader_ignore_signals=False,
-              strip=False,
-              upx=False,
-              console=False,
-              disable_windowed_traceback=False,
-              argv_emulation=False,
-              target_arch='arm64',
-              codesign_identity=None,
-              entitlements_file=None,
-          )
-
-          coll = COLLECT(
-              exe,
-              a.binaries,
-              a.zipfiles,
-              a.datas,
-              strip=False,
-              upx=False,
-              upx_exclude=[],
-              name='PhotoUploader',
-          )
-
-          app = BUNDLE(
-              coll,
-              name='PhotoUploader.app',
-              icon=None,
-              bundle_identifier='com.yourcompany.photouploader',
-              version='1.0.0',
-              info_plist={
-                  'NSPrincipalClass': 'NSApplication',
-                  'NSHighResolutionCapable': 'True',
-                  'LSMinimumSystemVersion': '10.13.0',
-                  'NSRequiresAquaSystemAppearance': 'False',
-                  'NSAppleEventsUsageDescription': 'PhotoUploader needs to access files.',
-                  'NSSupportsAutomaticTermination': 'NO',
-                  'NSSupportsSuddenTermination': 'NO',
-                  'LSUIElement': '0',
-              },
-          )
-          EOF
-
-      - name: Build macOS app for Apple Silicon
-        run: |
-          pyinstaller PhotoUploader.spec --clean --noconfirm
-          
-          echo "--- Verifying architecture ---"
-          lipo -info dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          file dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          
-          echo "--- Checking app bundle structure ---"
-          ls -la dist/PhotoUploader.app/Contents/
-          ls -la dist/PhotoUploader.app/Contents/MacOS/
-          
-          echo "--- Setting permissions ---"
-          chmod +x dist/PhotoUploader.app/Contents/MacOS/PhotoUploader
-          
-          echo "--- Ad-hoc signing ---"
-          codesign --force --deep --sign - dist/PhotoUploader.app
-          codesign --verify --verbose dist/PhotoUploader.app
-          
-          echo "--- Removing quarantine attributes ---"
-          xattr -cr dist/PhotoUploader.app
-      
-      - name: Install create-dmg tool
-        run: brew install create-dmg
-      
-      - name: Create DMG for Apple Silicon
-        run: |
-          # Create a proper installer DMG with Applications folder link
-          create-dmg \
-            --volname "PhotoUploader" \
-            --volicon "dist/PhotoUploader.app/Contents/Resources/AppIcon.icns" \
-            --window-pos 200 120 \
-            --window-size 600 400 \
-            --icon-size 100 \
-            --icon "PhotoUploader.app" 175 120 \
-            --hide-extension "PhotoUploader.app" \
-            --app-drop-link 425 120 \
-            --no-internet-enable \
-            "dist/PhotoUploader-macOS-AppleSilicon.dmg" \
-            "dist/PhotoUploader.app" \
-            || hdiutil create -volname "PhotoUploader Apple Silicon" \
-               -srcfolder "dist/PhotoUploader.app" \
-               -ov -format UDZO \
-               "dist/PhotoUploader-macOS-AppleSilicon.dmg"
-      
-      - name: Upload Apple Silicon macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PhotoUploader-macOS-AppleSilicon
-          path: dist/PhotoUploader-macOS-AppleSilicon.dmg
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+    
+    - name: Display structure
+      run: ls -R artifacts
+    
+    - name: Create Release Notes
+      run: |
+        cat > RELEASE_NOTES.md << 'EOF'
+        ## 📸 SnapFlow ${{ github.ref_name }}
+        
+        Desktop application for photographers to upload photos to Dropbox via Make.com workflow.
+        
+        ### 📦 Downloads
+        
+        | Platform | File | Size | SHA256 |
+        |----------|------|------|--------|
+        | Windows | SnapFlow.exe | See below | See .sha256 file |
+        | macOS | SnapFlow.dmg | See below | See .sha256 file |
+        
+        ### 🪟 Windows Installation
+        
+        1. Download `SnapFlow.exe`
+        2. Download `SnapFlow.exe.sha256` (optional - for verification)
+        3. Right-click exe → Properties → Check "Unblock" if present
+        4. Run the application
+        
+        **⚠️ Antivirus Warning?**
+        - This is a FALSE POSITIVE (common with PyInstaller)
+        - Click "More info" → "Run anyway" in Windows Defender
+        - Or verify the SHA256 hash matches the .sha256 file
+        - Source code is fully available on GitHub for inspection
+        
+        ### 🍎 macOS Installation
+        
+        1. Download `SnapFlow.dmg`
+        2. Download `SnapFlow.dmg.sha256` (optional - for verification)
+        3. Open the DMG file
+        4. Drag SnapFlow.app to Applications
+        5. **First run**: Right-click → Open (bypasses Gatekeeper)
+        
+        **⚠️ Gatekeeper Warning?**
+        - App is not code-signed yet (requires $99/year Apple Developer Program)
+        - Right-click → Open on first launch
+        - Or verify SHA256 hash
+        - Source code available for inspection
+        
+        ### 🔐 Security Notes
+        
+        - All builds are reproducible from source
+        - SHA256 hashes provided for verification
+        - Antivirus warnings are false positives
+        - We're working on code signing certificates
+        
+        ### 📚 Documentation
+        
+        See the [README](README.md) for:
+        - Full setup instructions
+        - Configuration guide
+        - Troubleshooting
+        - API documentation
+        
+        ### 🐛 Known Issues
+        
+        - First-run security warnings (normal for unsigned apps)
+        - Some antivirus software may quarantine (false positive)
+        
+        ### 📝 Changelog
+        
+        See [CHANGELOG.md](CHANGELOG.md) for detailed changes.
+        
+        ---
+        
+        **Need help?** Open an issue on GitHub or check the documentation.
+        EOF
+    
+    - name: Update Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: RELEASE_NOTES.md
+        fail_on_unmatched_files: false

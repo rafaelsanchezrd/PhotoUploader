@@ -38,7 +38,7 @@ class PhotoUploaderApp:
     
     def __init__(self, root):
         self.root = root
-        self.root.title("Photo Uploader")
+        self.root.title("FlowSnap Uploader")
         self.root.geometry("700x650")
         self.root.resizable(False, False)
         
@@ -99,12 +99,12 @@ class PhotoUploaderApp:
     def _prompt_photographer_id(self):
         """Show dialog to enter photographer ID."""
         dialog = tk.Toplevel(self.root)
-        dialog.title("Photographer ID Required")
+        dialog.title("Enter your Name")
         dialog.geometry("400x150")
         dialog.transient(self.root)
         dialog.grab_set()
         
-        ttk.Label(dialog, text="Enter Your Photographer ID:", 
+        ttk.Label(dialog, text="Enter Your Name:", 
                  font=('Arial', 11)).pack(pady=20)
         
         id_entry = ttk.Entry(dialog, width=30, font=('Arial', 10))
@@ -119,7 +119,7 @@ class PhotoUploaderApp:
                 self._initialize_clients()
                 dialog.destroy()
             else:
-                messagebox.showwarning("Invalid Input", "Please enter a photographer ID")
+                messagebox.showwarning("Invalid Input", "Please enter a Name")
         
         ttk.Button(dialog, text="Save", command=save_id).pack(pady=10)
         
@@ -245,6 +245,10 @@ class PhotoUploaderApp:
         ttk.Radiobutton(radio_frame, text="Twilight Photos (manual editors)", 
                        variable=self.content_type, value="twilight",
                        command=self._on_content_type_changed).pack(side=tk.LEFT, padx=(0, 20))
+
+        ttk.Radiobutton(radio_frame, text="High end (Manual)", 
+                       variable=self.content_type, value="manual",
+                       command=self._on_content_type_changed).pack(side=tk.LEFT, padx=(0, 20))
         
         ttk.Radiobutton(radio_frame, text="Video", 
                        variable=self.content_type, value="video",
@@ -326,6 +330,8 @@ class PhotoUploaderApp:
             self.content_info_label.config(text="⚠️ Twilight photos - Slack notification will be sent to manual editors")
         elif content == "video":
             self.content_info_label.config(text="📹 Video files - will be uploaded to video folder")
+        elif content == "manual":
+            self.content_info_label.config(text="📹 These files - will be uploaded to Photos folder")
         
         # Reset validation when content type changes
         self.validated_site_info = None
